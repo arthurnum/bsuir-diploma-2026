@@ -37,9 +37,9 @@ int make_server_on_port(int port) {
     return socket;
 }
 
-int send_to_address(int socket, const char* ip, int port) {
-    net_sock_addr* addr = address_with_port(ip, port);
-    return sendto(socket, "hello!", 7, MSG_DONTWAIT, (struct sockaddr*)addr, sizeof(net_sock_addr));
+int send_to_bin(int socket, net_sock_addr* addr, uint8_t* data, int size) {
+    // net_sock_addr* addr = address_with_port(ip, port);
+    return sendto(socket, data, size, MSG_DONTWAIT, (struct sockaddr*)addr, sizeof(net_sock_addr));
 }
 
 int recv_packet(int socket, net_sock_addr* addr) {
@@ -49,13 +49,14 @@ int recv_packet(int socket, net_sock_addr* addr) {
         memset(readBuffer, 0, READ_BUFFER_SIZE);
     }
     socklen_t addrLen = sizeof(net_sock_addr);
-    return recvfrom(socket, readBuffer, 256, 0, (struct sockaddr*)addr, &addrLen);
+    return recvfrom(socket, readBuffer, READ_BUFFER_SIZE, 0, (struct sockaddr*)addr, &addrLen);
 }
 
-void describe_address(net_sock_addr* addr) {
+char* describe_address(net_sock_addr* addr) {
     char* buf = calloc(1, 32);
-    printf("%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
-    free(buf);
+    sprintf(buf, "%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
+    // printf("%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
+    return buf;
 }
 
 void* get_read_buffer() { return readBuffer; }

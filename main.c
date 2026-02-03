@@ -5,6 +5,9 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
+#include "net.h"
+#include "protocol.h"
+
 /* We will use this renderer to draw into this window every frame. */
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -25,10 +28,14 @@ static AVFrame *decodedCameraFrame = NULL;
 static AVPacket *cameraPacket = NULL;
 static int currentFramePts = 0;
 static char isCameraReady = 0;
-static u_int8_t *pxls = NULL;
+static uint8_t *pxls = NULL;
+
+static int udpClient;
+static net_sock_addr* serverAddr;
+static int connectionIdx = 0;
 
 static AVFrame *bufFrame = NULL;
-static void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
+void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
     int err;
     if (!bufFrame) {
         bufFrame = av_frame_alloc();
@@ -55,28 +62,36 @@ static void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
     }
 }
 
-static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
+AVPacket* encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
     int err;
 
     err = avcodec_send_frame(enc_ctx, frame);
     if (err < 0) {
         SDL_Log("Error sending a frame for encoding");
-        return;
+        return NULL;
     }
 
     while (err >= 0) {
         err = avcodec_receive_packet(enc_ctx, pkt);
         if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
-            return;
+            return NULL;
         else if (err < 0) {
             SDL_Log("Error during encoding");
-            return;
+            return NULL;
         }
 
         SDL_Log("Write packet (size=%5d)", pkt->size);
-        decode(decoderContext, decodedCameraFrame, av_packet_clone(pkt));
-        av_packet_unref(pkt);
+        // decode(decoderContext, decodedCameraFrame, av_packet_clone(pkt));
+        // av_packet_unref(pkt);
+        return av_packet_clone(pkt);
     }
+
+    return NULL;
+}
+
+void requestConnectionIdx(net_sock_addr* addr) {
+    uint8_t data[1] = {PROTOCOL_NEW_CONNECTION};
+    send_to_bin(udpClient, serverAddr, data, 1);
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
@@ -143,7 +158,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     decoderContext->height = 1080;
     decoderContext->pix_fmt = AV_PIX_FMT_YUV420P;
 
-    err = avcodec_open2(codecContext, codec, NULL);
+    AVDictionary* codecOpts = NULL;
+    av_dict_set(&codecOpts, "threads", "1", 0);
+    av_dict_set(&codecOpts, "preset", "ultrafast", 0);
+    av_dict_set(&codecOpts, "tune", "zerolatency", 0);
+    err = avcodec_open2(codecContext, codec, &codecOpts);
     if (err < 0) {
         SDL_Log("Could not open codec: %s", av_err2str(err));
         return SDL_APP_FAILURE;
@@ -166,6 +185,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
 
     pxls = calloc(3110400, 1);
+
+    udpClient = make_client();
+    serverAddr = address_with_port("127.0.0.1", 44323);
+    requestConnectionIdx(serverAddr);
+    uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
+    recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
+    printf("OPT code: %d\n", readBuf[0]);
+    printf("Connection Idx: %d\n", *(uint16_t*)(&readBuf[1]));
+    printf("Meta string: %s\n", &readBuf[3]);
 
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
@@ -241,7 +269,11 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             memcpy(rawCameraFrame->data[1], &px[2073600], 518400);
             memcpy(rawCameraFrame->data[2], &px[2592000], 518400);
 
-            encode(codecContext, rawCameraFrame, cameraPacket);
+            AVPacket* avp = encode(codecContext, rawCameraFrame, cameraPacket);
+            if (avp) {
+                // send_to_bin(udpClient, serverAddr, avp->data, avp->size);
+                av_packet_free(&avp);
+            }
         }
 
 
