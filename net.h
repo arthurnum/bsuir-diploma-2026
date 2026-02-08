@@ -13,6 +13,8 @@ static int lastError = 0;
 #define READ_BUFFER_SIZE 2048
 static void* readBuffer;
 
+#define FRAME_CHUNK 1024
+
 int make_client();
 int make_server_on_port(int port);
 
@@ -25,5 +27,8 @@ void* get_read_buffer();
 char* describe_address(net_sock_addr* addr);
 
 int get_last_error();
+
+uint16_t get_uint16_i(uint8_t* data, int i);
+uint32_t get_uint32_i(uint8_t* data, int i);
 
 #endif

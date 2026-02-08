@@ -13,12 +13,6 @@ int main() {
 
     SConnectionMap* connMap = make_conn_map();
 
-    // int client = make_client();
-    // printf("Client FD %d\n", client);
-
-    // int size = send_to_address(client, "127.0.0.1", 44323);
-    // printf("Client sent %d bytes\n", size);
-
     net_sock_addr* a = calloc(1, sizeof(net_sock_addr));
 
     while (1) {
@@ -29,8 +23,6 @@ int main() {
         uint8_t* bufResponse;
         uint8_t opCode = data[0];
 
-        uint16_t testI = 1025;
-
         switch (opCode) {
             case PROTOCOL_NEW_CONNECTION:
                 idx = map_new_entry(connMap);
@@ -39,21 +31,22 @@ int main() {
 
                 bufResponse = calloc(1, 64);
                 bufResponse[0] = PROTOCOL_ASSIGN_CONNECTION_IDX;
-                *(uint16_t*)(&bufResponse[1]) = testI;
+                *(uint16_t*)(&bufResponse[1]) = idx;
                 memcpy(&bufResponse[3], connMap->entries[idx].meta_str, 32);
                 send_to_bin(server, a, bufResponse, 64);
                 break;
 
+            case PROTOCOL_FRAME:
+                idx = get_uint16_i(data, 1);
+                fill_frame_buffer(connMap, idx, data);
+                if (data[11]) {
+                    printf("Frame EOF.\n");
+                }
+
             default:
                 break;
         }
-        // printf("Server received %d bytes\n", size);
-        // describe_address(a);
-        // printf("Message %s\n", (char*)get_read_buffer());
     }
-
-
-    // close(client);
     close(server);
     return 0;
 }

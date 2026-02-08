@@ -91,7 +91,36 @@ AVPacket* encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
 
 void requestConnectionIdx(net_sock_addr* addr) {
     uint8_t data[1] = {PROTOCOL_NEW_CONNECTION};
-    send_to_bin(udpClient, serverAddr, data, 1);
+    send_to_bin(udpClient, addr, data, 1);
+}
+
+void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] frame size [32bit]
+    // [7] data size [32bit]
+    // [11] frame EOF flag [8bit]
+    // [12] data [1024B]
+    uint8_t* data = malloc(READ_BUFFER_SIZE);
+    data[0] = PROTOCOL_FRAME;
+    *(uint16_t*)(&data[1]) = connectionIdx;
+    *(uint32_t*)(&data[3]) = pkt->size;
+
+    int i = 0;
+    while (i < pkt->size) {
+        uint32_t dataSize = FRAME_CHUNK;
+        uint8_t oef_flag = 0;
+        if (i + FRAME_CHUNK > pkt->size) {
+            dataSize = (uint32_t)(pkt->size - i);
+            oef_flag = FRAME_FLAG_EOF;
+        }
+        *(uint32_t*)(&data[7]) = dataSize;
+        data[11] = oef_flag;
+        memcpy(&data[12], &pkt->data[i], dataSize);
+        i += FRAME_CHUNK;
+        send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
+    }
+    free(data);
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
@@ -271,7 +300,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
             AVPacket* avp = encode(codecContext, rawCameraFrame, cameraPacket);
             if (avp) {
-                // send_to_bin(udpClient, serverAddr, avp->data, avp->size);
+                sendFramePacket(serverAddr, avp);
                 av_packet_free(&avp);
             }
         }

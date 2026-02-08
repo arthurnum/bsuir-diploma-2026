@@ -55,9 +55,16 @@ int recv_packet(int socket, net_sock_addr* addr) {
 char* describe_address(net_sock_addr* addr) {
     char* buf = calloc(1, 32);
     sprintf(buf, "%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
-    // printf("%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
     return buf;
 }
 
 void* get_read_buffer() { return readBuffer; }
 int get_last_error() { return lastError; }
+
+uint16_t get_uint16_i(uint8_t* data, int i) {
+    return *(uint16_t*)&data[i];
+}
+
+uint32_t get_uint32_i(uint8_t* data, int i) {
+    return *(uint32_t*)&data[i];
+}
