@@ -24,7 +24,6 @@ static const AVCodec *codecDecoder = NULL;
 static AVCodecContext *codecContext = NULL;
 static AVCodecContext *decoderContext = NULL;
 static AVFrame *rawCameraFrame = NULL;
-static AVFrame *decodedCameraFrame = NULL;
 static AVPacket *cameraPacket = NULL;
 static int currentFramePts = 0;
 static char isCameraReady = 0;
@@ -35,31 +34,34 @@ static net_sock_addr* serverAddr;
 static int connectionIdx = 0;
 
 static AVFrame *bufFrame = NULL;
-// void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
-void decode(AVCodecContext *enc_ctx, AVPacket *pkt) {
+AVFrame* decode(AVCodecContext *enc_ctx, AVPacket *pkt) {
     int err;
     if (!bufFrame) {
         bufFrame = av_frame_alloc();
     }
+    AVFrame* resultFrame = NULL;
 
     err = avcodec_send_packet(enc_ctx, pkt);
     if (err < 0) {
         SDL_Log("Error sending a packet for decoding: %s", av_err2str(err));
-        return;
+        return NULL;
     }
 
     while (err >= 0) {
         err = avcodec_receive_frame(enc_ctx, bufFrame);
         if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
-            return;
+            return NULL;
         else if (err < 0) {
             SDL_Log("Error during decoding");
-            return;
+            return NULL;
         }
 
-        // decodedCameraFrame = av_frame_clone(bufFrame);
+        AVFrame* resultFrame = av_frame_clone(bufFrame);
         av_frame_unref(bufFrame);
+        return resultFrame;
     }
+
+    return NULL;
 }
 
 AVPacket* encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
@@ -203,7 +205,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     rawCameraFrame = av_frame_alloc();
     rawCameraFrame->format = AV_PIX_FMT_YUV420P;
-    decodedCameraFrame = av_frame_alloc();
 
     cameraPacket = av_packet_alloc();
     if (!cameraPacket) {
@@ -260,15 +261,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         if (texture) {
             SDL_UpdateTexture(texture, NULL, frame->pixels, frame->pitch);
-        }
-        if (texture2) {
-            if (decodedCameraFrame->buf[0]) {
-                memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
-                memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
-                memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
-                SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
-                av_frame_unref(decodedCameraFrame);
-            }
         }
 
         rawCameraFrame->width = frame->w;
@@ -328,8 +320,19 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 memcpy(dataPtr, &resData[12], dataSize);
                 dataPtr += dataSize;
             }
-            // decode(decoderContext, decodedCameraFrame, packet);
-            decode(decoderContext, packet);
+
+            AVFrame* decodedCameraFrame = decode(decoderContext, packet);
+
+            if (texture2) {
+                if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
+                    memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
+                    memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
+                    memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
+                    SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
+                    av_frame_free(&decodedCameraFrame);
+                }
+            }
+
             free(packet->data);
             av_packet_free(&packet);
         }
