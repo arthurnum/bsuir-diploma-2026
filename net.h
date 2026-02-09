@@ -20,6 +20,7 @@ int make_server_on_port(int port);
 
 int send_to_bin(int socket, net_sock_addr* addr, uint8_t* data, int size);
 int recv_packet(int socket, net_sock_addr* addr);
+int recv_packet_dontwait(int socket);
 
 net_sock_addr* address_with_port(const char* ip, int port);
 

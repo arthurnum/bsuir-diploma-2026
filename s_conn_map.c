@@ -25,6 +25,10 @@ void fill_frame_buffer(SConnectionMap* map, uint16_t idx, uint8_t* data) {
         conn->frame_buf = malloc(1 << 19);
         conn->frame_buf_ptr = conn->frame_buf;
     }
+    if (conn->is_frame_eof) {
+        conn->frame_buf_ptr = conn->frame_buf;
+        conn->is_frame_eof = 0;
+    }
     conn->frame_size = frameSize;
     memcpy(conn->frame_buf_ptr, &data[12], dataSize);
     conn->frame_buf_ptr += dataSize;

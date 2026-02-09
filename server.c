@@ -5,10 +5,42 @@
 #include "protocol.h"
 #include "s_conn_map.h"
 
+static int server;
+
+void sendFramePacket(net_sock_addr* addr, SConnectionMap* connMap, uint16_t idx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] frame size [32bit]
+    // [7] data size [32bit]
+    // [11] frame EOF flag [8bit]
+    // [12] data [1024B]
+    uint8_t* data = malloc(READ_BUFFER_SIZE);
+    data[0] = PROTOCOL_FRAME;
+    SConnection* conn = &connMap->entries[idx];
+    *(uint16_t*)(&data[1]) = idx;
+    *(uint32_t*)(&data[3]) = conn->frame_size;
+
+    int i = 0;
+    while (i < conn->frame_size) {
+        uint32_t dataSize = FRAME_CHUNK;
+        uint8_t oef_flag = 0;
+        if (i + FRAME_CHUNK > conn->frame_size) {
+            dataSize = (uint32_t)(conn->frame_size - i);
+            oef_flag = FRAME_FLAG_EOF;
+        }
+        *(uint32_t*)(&data[7]) = dataSize;
+        data[11] = oef_flag;
+        memcpy(&data[12], &conn->frame_buf[i], dataSize);
+        i += FRAME_CHUNK;
+        send_to_bin(server, addr, data, READ_BUFFER_SIZE);
+    }
+    free(data);
+}
+
 int main() {
     int size;
     int max = 0;
-    int server = make_server_on_port(44323);
+    server = make_server_on_port(44323);
     printf("Socket FD %d\n", server);
 
     SConnectionMap* connMap = make_conn_map();
@@ -41,6 +73,7 @@ int main() {
                 fill_frame_buffer(connMap, idx, data);
                 if (data[11]) {
                     printf("Frame EOF.\n");
+                    sendFramePacket(a, connMap, idx);
                 }
 
             default:

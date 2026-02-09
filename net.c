@@ -52,6 +52,15 @@ int recv_packet(int socket, net_sock_addr* addr) {
     return recvfrom(socket, readBuffer, READ_BUFFER_SIZE, 0, (struct sockaddr*)addr, &addrLen);
 }
 
+int recv_packet_dontwait(int socket) {
+    if (!readBuffer) {
+        readBuffer = calloc(1, READ_BUFFER_SIZE);
+    } else {
+        memset(readBuffer, 0, READ_BUFFER_SIZE);
+    }
+    return recv(socket, readBuffer, READ_BUFFER_SIZE, MSG_DONTWAIT);
+}
+
 char* describe_address(net_sock_addr* addr) {
     char* buf = calloc(1, 32);
     sprintf(buf, "%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));

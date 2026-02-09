@@ -35,7 +35,8 @@ static net_sock_addr* serverAddr;
 static int connectionIdx = 0;
 
 static AVFrame *bufFrame = NULL;
-void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
+// void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
+void decode(AVCodecContext *enc_ctx, AVPacket *pkt) {
     int err;
     if (!bufFrame) {
         bufFrame = av_frame_alloc();
@@ -56,9 +57,8 @@ void decode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
             return;
         }
 
-        decodedCameraFrame = av_frame_clone(bufFrame);
+        // decodedCameraFrame = av_frame_clone(bufFrame);
         av_frame_unref(bufFrame);
-        av_packet_free(&pkt);
     }
 }
 
@@ -81,8 +81,6 @@ AVPacket* encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
         }
 
         SDL_Log("Write packet (size=%5d)", pkt->size);
-        // decode(decoderContext, decodedCameraFrame, av_packet_clone(pkt));
-        // av_packet_unref(pkt);
         return av_packet_clone(pkt);
     }
 
@@ -305,10 +303,36 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             }
         }
 
-
         // Do not call SDL_DestroySurface() on the returned surface!
         // It must be given back to the camera subsystem with SDL_ReleaseCameraFrame!
         SDL_ReleaseCameraFrame(camera, frame);
+    }
+
+    if (recv_packet_dontwait(udpClient) > 0) {
+        uint8_t* resData = get_read_buffer();
+        if (resData[0] == PROTOCOL_FRAME) {
+            AVPacket* packet = av_packet_alloc();
+            av_packet_make_writable(packet);
+            uint32_t frameSize = get_uint32_i(resData, 3);
+            uint32_t dataSize = get_uint32_i(resData, 7);
+            packet->data = malloc(frameSize);
+            packet->size = frameSize;
+            uint8_t* dataPtr = packet->data;
+
+            memcpy(dataPtr, &resData[12], dataSize);
+            dataPtr += dataSize;
+            while (resData[11] != FRAME_FLAG_EOF) {
+                recv_packet(udpClient, NULL);
+                resData = get_read_buffer();
+                dataSize = get_uint32_i(resData, 7);
+                memcpy(dataPtr, &resData[12], dataSize);
+                dataPtr += dataSize;
+            }
+            // decode(decoderContext, decodedCameraFrame, packet);
+            decode(decoderContext, packet);
+            free(packet->data);
+            av_packet_free(&packet);
+        }
     }
 
     SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
