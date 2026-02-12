@@ -7,6 +7,7 @@
 
 #include "net.h"
 #include "protocol.h"
+#include "client_state.h"
 
 /* We will use this renderer to draw into this window every frame. */
 static SDL_Window *window = NULL;
@@ -17,6 +18,10 @@ static SDL_FRect *targetRect = NULL;
 
 static SDL_Texture *texture2 = NULL;
 static SDL_FRect *targetRect2 = NULL;
+
+static SDL_AudioDeviceID recDeviceID, playDeviceID;
+static SDL_AudioStream* recStream;
+static SDL_AudioStream* playStream;
 
 // Coder
 static const AVCodec *codec = NULL;
@@ -82,7 +87,7 @@ AVPacket* encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
             return NULL;
         }
 
-        SDL_Log("Write packet (size=%5d)", pkt->size);
+        // SDL_Log("Write packet (size=%5d)", pkt->size);
         return av_packet_clone(pkt);
     }
 
@@ -130,7 +135,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     SDL_SetAppMetadata("Example Camera Read and Draw", "1.0", "com.example.camera-read-and-draw");
 
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_CAMERA)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_CAMERA | SDL_INIT_AUDIO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -223,10 +228,46 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     printf("Connection Idx: %d\n", *(uint16_t*)(&readBuf[1]));
     printf("Meta string: %s\n", &readBuf[3]);
 
+    SDL_AudioDeviceID* recAudioDevices = SDL_GetAudioRecordingDevices(NULL);
+    if (!recAudioDevices) {
+        SDL_Log("SDL_GetAudioRecordingDevices error: %s", SDL_GetError());
+    }
+    recDeviceID = recAudioDevices[0];
+    SDL_free(recAudioDevices);
+    SDL_AudioSpec recSpec;
+    if (!SDL_GetAudioDeviceFormat(recDeviceID, &recSpec, NULL)) {
+        SDL_Log("SDL_GetAudioDeviceFormat error: %s", SDL_GetError());
+    }
+    recSpec.channels = 2;
+    recStream = SDL_OpenAudioDeviceStream(recDeviceID, &recSpec, NULL, NULL);
+    if (!recStream) {
+        SDL_Log("SDL_OpenAudioDeviceStream error: %s", SDL_GetError());
+    }
+
+    SDL_AudioDeviceID* playAudioDevices = SDL_GetAudioPlaybackDevices(NULL);
+    if (!playAudioDevices) {
+        SDL_Log("SDL_GetAudioPlaybackDevices error: %s", SDL_GetError());
+    }
+    playDeviceID = playAudioDevices[0];
+    SDL_free(playAudioDevices);
+    SDL_AudioSpec playSpec;
+    if (!SDL_GetAudioDeviceFormat(playDeviceID, &playSpec, NULL)) {
+        SDL_Log("SDL_GetAudioDeviceFormat error: %s", SDL_GetError());
+    }
+    playStream = SDL_OpenAudioDeviceStream(playDeviceID, &recSpec, NULL, NULL);
+    if (!playStream) {
+        SDL_Log("SDL_OpenAudioDeviceStream error: %s", SDL_GetError());
+    }
+    SDL_ResumeAudioStreamDevice(playStream);
+
+    *appstate = (ClientState*)malloc(sizeof(ClientState));
+
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+    ClientState* state = appstate;
+
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
     } else if (event->type == SDL_EVENT_CAMERA_DEVICE_APPROVED) {
@@ -235,19 +276,32 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } else if (event->type == SDL_EVENT_CAMERA_DEVICE_DENIED) {
         SDL_Log("Camera use denied by user!");
         return SDL_APP_FAILURE;
+    } else if (event->type == SDL_EVENT_KEY_DOWN) {
+        switch (event->key.scancode)
+        {
+            case SDL_SCANCODE_ESCAPE:
+                return SDL_APP_SUCCESS;
+            case SDL_SCANCODE_SPACE:
+                state->mic_on = !state->mic_on;
+                state->mic_on ? SDL_ResumeAudioStreamDevice(recStream) : SDL_PauseAudioStreamDevice(recStream) ;
+                break;
+            default:
+                break;
+        }
+        return SDL_APP_CONTINUE;
     }
+
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
+    ClientState* state = appstate;
     Uint64 timestampNS = 0;
     SDL_Surface *frame = SDL_AcquireCameraFrame(camera, &timestampNS);
 
     if (frame != NULL) {
         unsigned char* px = frame->pixels;
-        // SDL_Log("Frame width %u", frame->w);
-        // SDL_Log("Frame height %u", frame->h);
-        SDL_Log("%u\t%u\t%u", px[2073599], px[2073600], px[3110400]);
+        // SDL_Log("%u\t%u\t%u", px[2073599], px[2073600], px[3110400]);
         /* Some platforms (like Emscripten) don't know _what_ the camera offers
            until the user gives permission, so we build the texture and resize
            the window when we get a first frame from the camera. */
@@ -292,6 +346,16 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             if (avp) {
                 sendFramePacket(serverAddr, avp);
                 av_packet_free(&avp);
+            }
+
+            if (state->mic_on) {
+                void* recordingBuffer = calloc(8192, 1);
+                int sizetest = SDL_GetAudioStreamData(recStream, recordingBuffer, 8192);
+                if (sizetest < 0) {
+                    SDL_Log("SDL_GetAudioStreamData error: %s", SDL_GetError());
+                }
+                SDL_PutAudioStreamData(playStream, recordingBuffer, sizetest);
+                free(recordingBuffer);
             }
         }
 
@@ -356,6 +420,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     SDL_CloseCamera(camera);
     SDL_DestroyTexture(texture);
+    SDL_CloseAudioDevice(recDeviceID);
+    SDL_Quit();
 
     avcodec_free_context(&codecContext);
     av_frame_free(&rawCameraFrame);
