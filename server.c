@@ -72,9 +72,14 @@ int main() {
                 idx = get_uint16_i(data, 1);
                 fill_frame_buffer(connMap, idx, data);
                 if (data[11]) {
-                    printf("Frame EOF.\n");
                     sendFramePacket(a, connMap, idx);
                 }
+                break;
+
+            case PROTOCOL_FRAME_AUDIO:
+                idx = get_uint16_i(data, 1);
+                send_to_bin(server, a, data, size);
+                break;
 
             default:
                 break;

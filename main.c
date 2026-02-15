@@ -38,13 +38,14 @@ static int udpClient;
 static net_sock_addr* serverAddr;
 static int connectionIdx = 0;
 
+static int total = 0;
+
 static AVFrame *bufFrame = NULL;
 AVFrame* decode(AVCodecContext *enc_ctx, AVPacket *pkt) {
     int err;
     if (!bufFrame) {
         bufFrame = av_frame_alloc();
     }
-    AVFrame* resultFrame = NULL;
 
     err = avcodec_send_packet(enc_ctx, pkt);
     if (err < 0) {
@@ -94,6 +95,69 @@ AVPacket* encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
     return NULL;
 }
 
+static const AVCodec* codecAudio;
+static AVCodecContext* codecAudioCtx;
+static AVFrame* audioFrameEncode;
+static AVPacket* microphonePacket;
+AVPacket* encode_audio(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
+    int err;
+
+    err = avcodec_send_frame(enc_ctx, frame);
+    if (err < 0) {
+        SDL_Log("Error sending a frame for encoding");
+        return NULL;
+    }
+
+    while (err >= 0) {
+        err = avcodec_receive_packet(enc_ctx, pkt);
+        if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
+            return NULL;
+        else if (err < 0) {
+            SDL_Log("Error during encoding");
+            return NULL;
+        }
+
+        SDL_Log("Audio packet (size=%5d)", pkt->size);
+        return av_packet_clone(pkt);
+    }
+
+    return NULL;
+}
+
+static const AVCodec* codecAudioDecode;
+static AVCodecContext* codecAudioDecodeCtx;
+static AVFrame* audioFrameDecode;
+AVFrame* decode_audio(AVCodecContext *enc_ctx, AVPacket *pkt) {
+    int err;
+    if (!audioFrameDecode) {
+        audioFrameDecode = av_frame_alloc();
+        audioFrameDecode->format = AV_SAMPLE_FMT_S16;
+    }
+    AVFrame* resultFrame = NULL;
+
+    err = avcodec_send_packet(enc_ctx, pkt);
+    if (err < 0) {
+        SDL_Log("Error sending a packet for decoding: %s", av_err2str(err));
+        return NULL;
+    }
+
+    while (err >= 0) {
+        err = avcodec_receive_frame(enc_ctx, audioFrameDecode);
+        if (err == AVERROR(EAGAIN) || err == AVERROR_EOF)
+            return NULL;
+        else if (err < 0) {
+            SDL_Log("Error during decoding");
+            return NULL;
+        }
+
+        resultFrame = av_frame_clone(audioFrameDecode);
+        av_frame_unref(audioFrameDecode);
+        return resultFrame;
+    }
+
+    return NULL;
+}
+
 void requestConnectionIdx(net_sock_addr* addr) {
     uint8_t data[1] = {PROTOCOL_NEW_CONNECTION};
     send_to_bin(udpClient, addr, data, 1);
@@ -125,6 +189,20 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
         i += FRAME_CHUNK;
         send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
     }
+    free(data);
+}
+
+void sendAudioFramePacket(net_sock_addr* addr, AVPacket* pkt) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] frame size [16bit]
+    // [5] data [512B]
+    uint8_t* data = malloc(1024);
+    data[0] = PROTOCOL_FRAME_AUDIO;
+    *(uint16_t*)(&data[1]) = connectionIdx;
+    *(uint16_t*)(&data[3]) = pkt->size;
+    memcpy(&data[5], pkt->data, pkt->size);
+    send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
     free(data);
 }
 
@@ -219,6 +297,41 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     pxls = calloc(3110400, 1);
 
+    codecAudio = avcodec_find_encoder(AV_CODEC_ID_OPUS);
+    codecAudioCtx = avcodec_alloc_context3(codecAudio);
+    codecAudioCtx->sample_fmt = AV_SAMPLE_FMT_S16;
+    codecAudioCtx->sample_rate = 48000;
+    codecAudioCtx->bit_rate = 64000;
+    av_channel_layout_copy(&codecAudioCtx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO);
+    err = avcodec_open2(codecAudioCtx, codecAudio, NULL);
+    if (err < 0) {
+        SDL_Log("Could not open audio codec: %s", av_err2str(err));
+        return SDL_APP_FAILURE;
+    }
+    audioFrameEncode = av_frame_alloc();
+    audioFrameEncode->format = AV_SAMPLE_FMT_S16;
+    audioFrameEncode->nb_samples = codecAudioCtx->frame_size;
+    av_channel_layout_copy(&audioFrameEncode->ch_layout, &codecAudioCtx->ch_layout);
+
+    codecAudioDecode = avcodec_find_decoder(AV_CODEC_ID_OPUS);
+    codecAudioDecodeCtx = avcodec_alloc_context3(codecAudioDecode);
+    codecAudioDecodeCtx->request_sample_fmt = AV_SAMPLE_FMT_S16;
+    codecAudioDecodeCtx->sample_rate = 48000;
+    codecAudioDecodeCtx->bit_rate = 64000;
+    av_channel_layout_copy(&codecAudioDecodeCtx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO);
+    err = avcodec_open2(codecAudioDecodeCtx, codecAudioDecode, NULL);
+    if (err < 0) {
+        SDL_Log("Could not open audio codec: %s", av_err2str(err));
+        return SDL_APP_FAILURE;
+    }
+    codecAudioDecodeCtx->sample_fmt = AV_SAMPLE_FMT_S16;
+
+    microphonePacket = av_packet_alloc();
+    if (!microphonePacket) {
+        SDL_Log("Could not allocate microphone packet");
+        return SDL_APP_FAILURE;
+    }
+
     udpClient = make_client();
     serverAddr = address_with_port("127.0.0.1", 44323);
     requestConnectionIdx(serverAddr);
@@ -234,12 +347,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
     recDeviceID = recAudioDevices[0];
     SDL_free(recAudioDevices);
-    SDL_AudioSpec recSpec;
-    if (!SDL_GetAudioDeviceFormat(recDeviceID, &recSpec, NULL)) {
-        SDL_Log("SDL_GetAudioDeviceFormat error: %s", SDL_GetError());
-    }
-    recSpec.channels = 2;
-    recStream = SDL_OpenAudioDeviceStream(recDeviceID, &recSpec, NULL, NULL);
+    SDL_AudioSpec audioSpec;
+    audioSpec.channels = 1;
+    audioSpec.format = SDL_AUDIO_S16;
+    audioSpec.freq = 48000;
+    recStream = SDL_OpenAudioDeviceStream(recDeviceID, &audioSpec, NULL, NULL);
     if (!recStream) {
         SDL_Log("SDL_OpenAudioDeviceStream error: %s", SDL_GetError());
     }
@@ -250,11 +362,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
     playDeviceID = playAudioDevices[0];
     SDL_free(playAudioDevices);
-    SDL_AudioSpec playSpec;
-    if (!SDL_GetAudioDeviceFormat(playDeviceID, &playSpec, NULL)) {
-        SDL_Log("SDL_GetAudioDeviceFormat error: %s", SDL_GetError());
-    }
-    playStream = SDL_OpenAudioDeviceStream(playDeviceID, &recSpec, NULL, NULL);
+    playStream = SDL_OpenAudioDeviceStream(playDeviceID, &audioSpec, NULL, NULL);
     if (!playStream) {
         SDL_Log("SDL_OpenAudioDeviceStream error: %s", SDL_GetError());
     }
@@ -295,6 +403,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
+    int err;
     ClientState* state = appstate;
     Uint64 timestampNS = 0;
     SDL_Surface *frame = SDL_AcquireCameraFrame(camera, &timestampNS);
@@ -321,7 +430,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         rawCameraFrame->height = frame->h;
 
         if (isCameraReady) {
-            int err;
             if (!rawCameraFrame->buf[0]) {
                 err = av_frame_get_buffer(rawCameraFrame, 0);
                 if (err < 0) {
@@ -347,21 +455,45 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 sendFramePacket(serverAddr, avp);
                 av_packet_free(&avp);
             }
-
-            if (state->mic_on) {
-                void* recordingBuffer = calloc(8192, 1);
-                int sizetest = SDL_GetAudioStreamData(recStream, recordingBuffer, 8192);
-                if (sizetest < 0) {
-                    SDL_Log("SDL_GetAudioStreamData error: %s", SDL_GetError());
-                }
-                SDL_PutAudioStreamData(playStream, recordingBuffer, sizetest);
-                free(recordingBuffer);
-            }
         }
-
         // Do not call SDL_DestroySurface() on the returned surface!
         // It must be given back to the camera subsystem with SDL_ReleaseCameraFrame!
         SDL_ReleaseCameraFrame(camera, frame);
+    }
+
+    int frameBufSize = codecAudioCtx->frame_size * 2; // 2 bytes per sample
+    if (SDL_GetAudioStreamAvailable(recStream) > frameBufSize) {
+        void* recordingBuffer = calloc(4096, 1);
+
+        int sizetest = SDL_GetAudioStreamData(recStream, recordingBuffer, frameBufSize);
+        total += sizetest;
+        if (sizetest < 0) {
+            SDL_Log("SDL_GetAudioStreamData error: %s", SDL_GetError());
+        }
+        SDL_Log("Size: %d\tSamples: %d\tTotal: %dKb", sizetest, sizetest / 2, total / 1024);
+        // SDL_PutAudioStreamData(playStream, recordingBuffer, sizetest);
+
+        if (!audioFrameEncode->buf[0]) {
+            err = av_frame_get_buffer(audioFrameEncode, 0);
+            if (err < 0) {
+                SDL_Log("Could not allocate the audio frame data");
+                return SDL_APP_FAILURE;
+            }
+        }
+        err = av_frame_make_writable(audioFrameEncode);
+        if (err < 0) {
+            SDL_Log("Could not make writable audio frame");
+            return SDL_APP_FAILURE;
+        }
+
+        memcpy(audioFrameEncode->data[0], recordingBuffer, sizetest);
+        AVPacket* audioPkt = encode_audio(codecAudioCtx, audioFrameEncode, microphonePacket);
+        if (audioPkt) {
+            sendAudioFramePacket(serverAddr, audioPkt);
+            av_packet_free(&audioPkt);
+        }
+
+        free(recordingBuffer);
     }
 
     if (recv_packet_dontwait(udpClient) > 0) {
@@ -400,6 +532,24 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             free(packet->data);
             av_packet_free(&packet);
         }
+
+        if (resData[0] == PROTOCOL_FRAME_AUDIO) {
+            AVPacket* packetAudio = av_packet_alloc();
+            av_packet_make_writable(packetAudio);
+            uint16_t frameSize = get_uint16_i(resData, 3);
+            packetAudio->data = calloc(frameSize, 1);
+            packetAudio->size = frameSize;
+            memcpy(packetAudio->data, &resData[5], frameSize);
+
+            AVFrame* decodedAudioFrame = decode_audio(codecAudioDecodeCtx, packetAudio);
+            if (decodedAudioFrame && decodedAudioFrame->buf[0]) {
+                // SDL_PutAudioStreamData(playStream, decodedAudioFrame->buf[0]->data, 1920);
+                av_frame_free(&decodedAudioFrame);
+            }
+
+            free(packetAudio->data);
+            av_packet_free(&packetAudio);
+        }
     }
 
     SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
@@ -426,5 +576,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     avcodec_free_context(&codecContext);
     av_frame_free(&rawCameraFrame);
     av_packet_free(&cameraPacket);
+    av_packet_free(&microphonePacket);
     /* SDL will clean up the window/renderer for us. */
 }
