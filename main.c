@@ -5,8 +5,8 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
-#include "net.h"
-#include "protocol.h"
+#include "shared/net.h"
+#include "shared/protocol.h"
 #include "client_state.h"
 #include "codec.h"
 

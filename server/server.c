@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include "net.h"
-#include "protocol.h"
+#include "../shared/net.h"
+#include "../shared/protocol.h"
 #include "s_conn_map.h"
 
 static int server;
