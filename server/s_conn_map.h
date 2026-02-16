@@ -2,6 +2,7 @@
 #define __DIMPLOMA_S_CONN_MAP_H
 
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef struct SConnection {
     uint8_t* frame_buf;

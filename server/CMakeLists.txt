@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.2)
 
-project(EremeevDiploma)
+project(EremeevDiploma LANGUAGES C)
 
 add_executable(Server)
 target_sources(Server

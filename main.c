@@ -36,6 +36,7 @@ static net_sock_addr* serverAddr;
 static int connectionIdx = 0;
 
 static int total = 0;
+static uint16_t packetNumber = 0;
 
 void requestConnectionIdx(net_sock_addr* addr) {
     uint8_t data[1] = {PROTOCOL_NEW_CONNECTION};
@@ -48,7 +49,8 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [3] frame size [32bit]
     // [7] data size [32bit]
     // [11] frame EOF flag [8bit]
-    // [12] data [1024B]
+    // [12] packet number [16bit]
+    // [14] data [1024B]
     uint8_t* data = malloc(READ_BUFFER_SIZE);
     data[0] = PROTOCOL_FRAME;
     *(uint16_t*)(&data[1]) = connectionIdx;
@@ -64,7 +66,8 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
         }
         *(uint32_t*)(&data[7]) = dataSize;
         data[11] = oef_flag;
-        memcpy(&data[12], &pkt->data[i], dataSize);
+        *(uint16_t*)(&data[12]) = ++packetNumber;
+        memcpy(&data[14], &pkt->data[i], dataSize);
         i += FRAME_CHUNK;
         send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
     }
@@ -135,6 +138,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     udpClient = make_client();
     serverAddr = address_with_port("127.0.0.1", 44323);
+    // serverAddr = address_with_port("46.243.183.18", 44323);
     requestConnectionIdx(serverAddr);
     uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
     recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
