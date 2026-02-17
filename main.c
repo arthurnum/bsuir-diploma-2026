@@ -36,7 +36,8 @@ static net_sock_addr* serverAddr;
 static int connectionIdx = 0;
 
 static int total = 0;
-static uint16_t packetNumber = 0;
+
+static uint32_t frameId = 0;
 
 void requestConnectionIdx(net_sock_addr* addr) {
     uint8_t data[1] = {PROTOCOL_NEW_CONNECTION};
@@ -48,28 +49,35 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [1] connection idx [16bit]
     // [3] frame size [32bit]
     // [7] data size [32bit]
-    // [11] frame EOF flag [8bit]
-    // [12] packet number [16bit]
-    // [14] data [512B]
+    // [11] frame flag [8bit]
+    // [12] chunk number [16bit]
+    // [14] frame ID [32bit]
+    // [18] data [512B]
+    uint8_t isKeyFrame = pkt->flags & AV_PKT_FLAG_KEY;
     uint8_t* data = malloc(READ_BUFFER_SIZE);
     data[0] = PROTOCOL_FRAME;
     *(uint16_t*)(&data[1]) = connectionIdx;
     *(uint32_t*)(&data[3]) = pkt->size;
 
-    int i = 0;
-    while (i < pkt->size) {
-        uint32_t dataSize = FRAME_CHUNK;
-        uint8_t oef_flag = 0;
-        if (i + FRAME_CHUNK > pkt->size) {
-            dataSize = (uint32_t)(pkt->size - i);
-            oef_flag = FRAME_FLAG_EOF;
+    frameId++;
+    *(uint32_t*)(&data[14]) = frameId;
+
+    for (int repeat = 0; repeat < 1 + isKeyFrame; repeat++) {
+        uint16_t chunkNumber = 0;
+        int i = 0;
+        while (i < pkt->size) {
+            uint32_t dataSize = FRAME_CHUNK;
+            if (i + FRAME_CHUNK > pkt->size) {
+                dataSize = (uint32_t)(pkt->size - i);
+            }
+            *(uint32_t*)(&data[7]) = dataSize;
+            data[11] = isKeyFrame;
+            *(uint16_t*)(&data[12]) = chunkNumber;
+            chunkNumber++;
+            memcpy(&data[18], &pkt->data[i], dataSize);
+            i += FRAME_CHUNK;
+            send_to_bin(udpClient, addr, data, FRAME_PACKET_SIZE);
         }
-        *(uint32_t*)(&data[7]) = dataSize;
-        data[11] = oef_flag;
-        *(uint16_t*)(&data[12]) = ++packetNumber;
-        memcpy(&data[14], &pkt->data[i], dataSize);
-        i += FRAME_CHUNK;
-        send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
     }
     free(data);
 }
@@ -137,8 +145,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     pxls = calloc(3110400, 1);
 
     udpClient = make_client();
-    serverAddr = address_with_port("127.0.0.1", 44323);
-    // serverAddr = address_with_port("46.243.183.18", 44323);
+    // serverAddr = address_with_port("127.0.0.1", 44323);
+    serverAddr = address_with_port("46.243.183.18", 44323);
     requestConnectionIdx(serverAddr);
     uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
     recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);

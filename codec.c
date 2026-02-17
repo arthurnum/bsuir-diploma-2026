@@ -14,13 +14,15 @@ Codec* InitCodec() {
     }
     codec->VideoEncoderCtx->width = 1920;
     codec->VideoEncoderCtx->height = 1080;
-    codec->VideoEncoderCtx->gop_size = 10;
-    codec->VideoEncoderCtx->max_b_frames = 1;
+    codec->VideoEncoderCtx->gop_size = 30;
+    codec->VideoEncoderCtx->max_b_frames = 16;
     codec->VideoEncoderCtx->pix_fmt = AV_PIX_FMT_YUV420P;
     codec->VideoEncoderCtx->time_base = (AVRational){1, 25};
     codec->VideoEncoderCtx->framerate = (AVRational){25, 1};
+    codec->VideoEncoderCtx->bit_rate = 1024 * 2000; // 2Mb
     AVDictionary* codecOpts = NULL;
     av_dict_set(&codecOpts, "threads", "1", 0);
+    // av_dict_set(&codecOpts, "preset", "veryfast", 0);
     av_dict_set(&codecOpts, "preset", "ultrafast", 0);
     av_dict_set(&codecOpts, "tune", "zerolatency", 0);
     err = avcodec_open2(codec->VideoEncoderCtx, codec->VideoEncoder, &codecOpts);

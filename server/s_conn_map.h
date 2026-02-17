@@ -8,6 +8,7 @@ typedef struct SConnection {
     uint8_t* frame_buf;
     uint8_t* frame_buf_ptr;
     uint32_t frame_size;
+    uint32_t current_frame_id;
     uint8_t is_frame_eof;
     char* meta_str;
 } SConnection;
@@ -21,6 +22,6 @@ typedef struct SConnectionMap {
 SConnectionMap* make_conn_map();
 
 uint16_t map_new_entry(SConnectionMap* map);
-void fill_frame_buffer(SConnectionMap* map, uint16_t idx, uint8_t* data);
+int fill_frame_buffer(SConnectionMap* map, uint16_t idx, uint8_t* data);
 
 #endif

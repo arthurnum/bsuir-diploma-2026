@@ -17,21 +17,25 @@ uint16_t map_new_entry(SConnectionMap* map) {
     return idx;
 }
 
-void fill_frame_buffer(SConnectionMap* map, uint16_t idx, uint8_t* data) {
+int fill_frame_buffer(SConnectionMap* map, uint16_t idx, uint8_t* data) {
     SConnection* conn = &map->entries[idx];
+    uint32_t frameId = get_uint32_i(data, 14);
+
+    if (conn->frame_buf && conn->current_frame_id != frameId) {
+        conn->current_frame_id = frameId;
+        return 1; // next frame
+    }
+
+    conn->current_frame_id = frameId;
     uint32_t frameSize = get_uint32_i(data, 3);
     uint32_t dataSize = get_uint32_i(data, 7);
     if (conn->frame_buf == NULL) {
-        conn->frame_buf = malloc(1 << 19);
-        conn->frame_buf_ptr = conn->frame_buf;
+        conn->frame_buf = calloc(1 << 19, 1);
     }
-    if (conn->is_frame_eof) {
-        conn->frame_buf_ptr = conn->frame_buf;
-        conn->is_frame_eof = 0;
-    }
+    uint16_t chunkNumber = get_uint16_i(data, 12);
+    conn->frame_buf_ptr = conn->frame_buf + (FRAME_CHUNK * chunkNumber);
+    memcpy(conn->frame_buf_ptr, &data[18], dataSize);
     conn->frame_size = frameSize;
-    // memcpy(conn->frame_buf_ptr, &data[12], dataSize);
-    memcpy(conn->frame_buf_ptr, &data[14], dataSize);
-    conn->frame_buf_ptr += dataSize;
-    conn->is_frame_eof = data[11];
+
+    return 0;
 }

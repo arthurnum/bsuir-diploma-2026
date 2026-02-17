@@ -13,7 +13,7 @@ static int lastError = 0;
 #define READ_BUFFER_SIZE 1024
 static void* readBuffer;
 
-#define FRAME_PACKET_SIZE 526 // 512 data + 14 header
+#define FRAME_PACKET_SIZE 530 // 512 data + 18 header
 #define FRAME_CHUNK 512
 
 int make_client();

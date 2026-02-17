@@ -70,10 +70,10 @@ int main() {
 
             case PROTOCOL_FRAME:
                 idx = get_uint16_i(data, 1);
-                printf("Packet number: %d\n", get_uint16_i(data, 12));
-                fill_frame_buffer(connMap, idx, data);
-                if (data[11]) {
+                printf("Frame ID: %d\n", get_uint32_i(data, 14));
+                if (fill_frame_buffer(connMap, idx, data) > 0) {
                     sendFramePacket(a, connMap, idx);
+                    fill_frame_buffer(connMap, idx, data);
                 }
                 break;
 
