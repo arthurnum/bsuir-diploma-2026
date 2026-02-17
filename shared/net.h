@@ -10,10 +10,11 @@ typedef struct sockaddr_in net_sock_addr;
 
 static int lastError = 0;
 
-#define READ_BUFFER_SIZE 2048
+#define READ_BUFFER_SIZE 1024
 static void* readBuffer;
 
-#define FRAME_CHUNK 1024
+#define FRAME_PACKET_SIZE 526 // 512 data + 14 header
+#define FRAME_CHUNK 512
 
 int make_client();
 int make_server_on_port(int port);

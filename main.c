@@ -50,7 +50,7 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [7] data size [32bit]
     // [11] frame EOF flag [8bit]
     // [12] packet number [16bit]
-    // [14] data [1024B]
+    // [14] data [512B]
     uint8_t* data = malloc(READ_BUFFER_SIZE);
     data[0] = PROTOCOL_FRAME;
     *(uint16_t*)(&data[1]) = connectionIdx;
