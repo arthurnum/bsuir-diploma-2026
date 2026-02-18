@@ -169,8 +169,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     pxls = calloc(3110400, 1);
 
     udpClient = make_client();
-    // serverAddr = address_with_port("127.0.0.1", 44323);
-    serverAddr = address_with_port("46.243.183.18", 44323);
+    serverAddr = address_with_port("127.0.0.1", 44323);
+    // serverAddr = address_with_port("46.243.183.18", 44323);
     requestConnectionIdx(serverAddr);
     uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
     recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
@@ -352,70 +352,34 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     if (recv_packet_dontwait(udpClient) > 0) {
         uint8_t* resData = get_read_buffer();
+
         if (resData[0] == PROTOCOL_FRAME) {
             AVPacket* packet = codec->VideoDecodeInPacket;
             av_packet_make_writable(packet);
             uint32_t frameSize = get_uint32_i(resData, 3);
             uint32_t dataSize = get_uint32_i(resData, 7);
+            uint16_t chunkNumber = get_uint16_i(resData, 12);
             packet->size = frameSize;
-            uint8_t* dataPtr = packet->data;
-
-            SDL_Log("Frame  -");
-
-            memcpy(dataPtr, &resData[12], dataSize);
-            dataPtr += dataSize;
-
-            struct pollfd fd;
-            int ret;
-
-            fd.fd = udpClient;
-            fd.events = POLLIN;
-
-
-            char feed = 1;
-            while (feed) {
-            // while (resData[11] != FRAME_FLAG_EOF || ret != 0) { // ADD TIMEOUT
-                ret = poll(&fd, 1, 200); // timeout
-                switch (ret) {
-                    case -1:
-                        // Error
-                        feed = 0;
-                        break;
-                    case 0:
-                        // Timeout
-                        feed = 0;
-                        break;
-                    default:
-                        recv_packet(udpClient, NULL);
-                        resData = get_read_buffer();
-                        if (resData[0] == PROTOCOL_FRAME) {
-                            dataSize = get_uint32_i(resData, 7);
-                            memcpy(dataPtr, &resData[12], dataSize);
-                            dataPtr += dataSize;
-                            if (resData[11] == FRAME_FLAG_EOF) {
-                                feed = 0;
-                            }
-                        }
-                        break;
-                }
-            }
-            SDL_Log("Frame  - done");
+            uint8_t* dataPtr = packet->data + FRAME_CHUNK * chunkNumber;
+            memcpy(dataPtr, &resData[14], dataSize);
             packet = NULL;
 
-            DecodeVideo(codec);
-            AVFrame* decodedCameraFrame = av_frame_clone(codec->VideoDecodeOutFrame);
-            if (texture2) {
-                if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
-                    // memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
-                    // memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
-                    // memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
-                    memcpy(pxls, decodedCameraFrame->buf[0]->data, 230400);
-                    memcpy(&pxls[230400], decodedCameraFrame->buf[1]->data, 57600);
-                    memcpy(&pxls[288000], decodedCameraFrame->buf[2]->data, 57600);
-                    SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
+            if (resData[11] == FRAME_FLAG_EOF) {
+                DecodeVideo(codec);
+                AVFrame* decodedCameraFrame = av_frame_clone(codec->VideoDecodeOutFrame);
+                if (texture2) {
+                    if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
+                        // memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
+                        // memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
+                        // memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
+                        memcpy(pxls, decodedCameraFrame->buf[0]->data, 230400);
+                        memcpy(&pxls[230400], decodedCameraFrame->buf[1]->data, 57600);
+                        memcpy(&pxls[288000], decodedCameraFrame->buf[2]->data, 57600);
+                        SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
+                    }
                 }
+                av_frame_free(&decodedCameraFrame);
             }
-            av_frame_free(&decodedCameraFrame);
         }
 
         if (resData[0] == PROTOCOL_FRAME_AUDIO) {

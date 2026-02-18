@@ -13,13 +13,15 @@ void sendFramePacket(net_sock_addr* addr, SConnectionMap* connMap, uint16_t idx)
     // [3] frame size [32bit]
     // [7] data size [32bit]
     // [11] frame EOF flag [8bit]
-    // [12] data [512B]
+    // [12] chunk number [16bit]
+    // [14] data [512B]
     uint8_t* data = malloc(READ_BUFFER_SIZE);
     data[0] = PROTOCOL_FRAME;
     SConnection* conn = &connMap->entries[idx];
     *(uint16_t*)(&data[1]) = idx;
     *(uint32_t*)(&data[3]) = conn->frame_size;
 
+    uint16_t chunkNumber = 0;
     int i = 0;
     while (i < conn->frame_size) {
         uint32_t dataSize = FRAME_CHUNK;
@@ -30,7 +32,9 @@ void sendFramePacket(net_sock_addr* addr, SConnectionMap* connMap, uint16_t idx)
         }
         *(uint32_t*)(&data[7]) = dataSize;
         data[11] = oef_flag;
-        memcpy(&data[12], &conn->frame_buf[i], dataSize);
+        *(uint16_t*)(&data[12]) = chunkNumber;
+        chunkNumber++;
+        memcpy(&data[14], &conn->frame_buf[i], dataSize);
         i += FRAME_CHUNK;
         send_to_bin(server, addr, data, FRAME_PACKET_SIZE);
     }
