@@ -62,23 +62,28 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     frameId++;
     *(uint32_t*)(&data[14]) = frameId;
 
-    for (int repeat = 0; repeat < 1 + isKeyFrame; repeat++) {
-        uint16_t chunkNumber = 0;
-        int i = 0;
-        while (i < pkt->size) {
-            uint32_t dataSize = FRAME_CHUNK;
-            if (i + FRAME_CHUNK > pkt->size) {
-                dataSize = (uint32_t)(pkt->size - i);
-            }
-            *(uint32_t*)(&data[7]) = dataSize;
-            data[11] = isKeyFrame;
-            *(uint16_t*)(&data[12]) = chunkNumber;
-            chunkNumber++;
-            memcpy(&data[18], &pkt->data[i], dataSize);
-            i += FRAME_CHUNK;
-            send_to_bin(udpClient, addr, data, FRAME_PACKET_SIZE);
+    uint16_t chunkNumber = 0;
+    int i = 0;
+
+    // packet sequence
+    while (i < pkt->size) {
+        data[11] = 0;
+        uint32_t dataSize = FRAME_CHUNK;
+        if (i + FRAME_CHUNK > pkt->size) {
+            dataSize = (uint32_t)(pkt->size - i);
+            data[11] = FRAME_FLAG_EOF;
         }
+        *(uint32_t*)(&data[7]) = dataSize;
+        *(uint16_t*)(&data[12]) = chunkNumber;
+        chunkNumber++;
+        memcpy(&data[18], &pkt->data[i], dataSize);
+        i += FRAME_CHUNK;
+        send_to_bin(udpClient, addr, data, FRAME_PACKET_SIZE);
+
+        // wait ACK
+        recv_packet(udpClient, NULL);
     }
+
     free(data);
 }
 
@@ -145,8 +150,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     pxls = calloc(3110400, 1);
 
     udpClient = make_client();
-    // serverAddr = address_with_port("127.0.0.1", 44323);
-    serverAddr = address_with_port("46.243.183.18", 44323);
+    serverAddr = address_with_port("127.0.0.1", 44323);
+    // serverAddr = address_with_port("46.243.183.18", 44323);
     requestConnectionIdx(serverAddr);
     uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
     recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
@@ -271,7 +276,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
             EncodeVideo(codec);
             AVPacket* avp = av_packet_clone(codec->VideoEncodeOutPacket);
-            if (avp) {
+            if (avp && avp->pts >= 0) {
                 sendFramePacket(serverAddr, avp);
             }
             av_packet_free(&avp);

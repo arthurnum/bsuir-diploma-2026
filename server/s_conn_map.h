@@ -9,6 +9,7 @@ typedef struct SConnection {
     uint8_t* frame_buf_ptr;
     uint32_t frame_size;
     uint32_t current_frame_id;
+    uint16_t next_chunk_number;
     uint8_t is_frame_eof;
     char* meta_str;
 } SConnection;

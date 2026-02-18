@@ -52,16 +52,17 @@ int main() {
         uint8_t* data = get_read_buffer();
 
         uint16_t idx;
-        uint8_t* bufResponse;
+        uint8_t* bufResponse = calloc(1, 64);
         uint8_t opCode = data[0];
+        uint8_t eof = 0;
 
         switch (opCode) {
             case PROTOCOL_NEW_CONNECTION:
                 idx = map_new_entry(connMap);
                 connMap->entries[idx].meta_str = describe_address(a);
+                connMap->entries[idx].next_chunk_number = 0;
                 printf("New connection: %s", connMap->entries[idx].meta_str);
 
-                bufResponse = calloc(1, 64);
                 bufResponse[0] = PROTOCOL_ASSIGN_CONNECTION_IDX;
                 *(uint16_t*)(&bufResponse[1]) = idx;
                 memcpy(&bufResponse[3], connMap->entries[idx].meta_str, 32);
@@ -70,22 +71,30 @@ int main() {
 
             case PROTOCOL_FRAME:
                 idx = get_uint16_i(data, 1);
-                printf("Frame ID: %d\n", get_uint32_i(data, 14));
-                if (fill_frame_buffer(connMap, idx, data) > 0) {
+
+                eof = fill_frame_buffer(connMap, idx, data);
+
+                bufResponse[0] = PROTOCOL_FRAME_ACK;
+                send_to_bin(server, a, bufResponse, 8);
+
+                if (eof) {
                     sendFramePacket(a, connMap, idx);
-                    fill_frame_buffer(connMap, idx, data);
+                    connMap->entries[idx].next_chunk_number = 0;
                 }
                 break;
 
-            case PROTOCOL_FRAME_AUDIO:
+                case PROTOCOL_FRAME_AUDIO:
                 idx = get_uint16_i(data, 1);
                 send_to_bin(server, a, data, size);
                 break;
 
-            default:
+                default:
                 break;
         }
+
+        free(bufResponse);
     }
+
     close(server);
     return 0;
 }

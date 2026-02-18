@@ -61,6 +61,15 @@ int recv_packet_dontwait(int socket) {
     return recv(socket, readBuffer, READ_BUFFER_SIZE, MSG_DONTWAIT);
 }
 
+int recv_packet_dontwait_peek(int socket) {
+    if (!readBuffer) {
+        readBuffer = calloc(1, READ_BUFFER_SIZE);
+    } else {
+        memset(readBuffer, 0, READ_BUFFER_SIZE);
+    }
+    return recv(socket, readBuffer, READ_BUFFER_SIZE, MSG_DONTWAIT | MSG_PEEK);
+}
+
 char* describe_address(net_sock_addr* addr) {
     char* buf = calloc(1, 32);
     sprintf(buf, "%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));

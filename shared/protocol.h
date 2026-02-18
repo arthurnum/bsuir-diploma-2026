@@ -5,6 +5,8 @@
 #define PROTOCOL_ASSIGN_CONNECTION_IDX 11 // Server send connection idx
 #define PROTOCOL_FRAME 20
 #define PROTOCOL_FRAME_AUDIO 21
+#define PROTOCOL_FRAME_ACK 30
+#define PROTOCOL_FRAME_NACK 31
 
 #define FRAME_FLAG_EOF 1
 
