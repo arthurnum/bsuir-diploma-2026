@@ -12,17 +12,19 @@ Codec* InitCodec() {
         strcpy(codec->error_str, "Could not allocate video encoder context");
         return codec;
     }
-    codec->VideoEncoderCtx->width = 1920;
-    codec->VideoEncoderCtx->height = 1080;
+    // codec->VideoEncoderCtx->width = 1920;
+    // codec->VideoEncoderCtx->height = 1080;
+    codec->VideoEncoderCtx->width = 640;
+    codec->VideoEncoderCtx->height = 360;
     codec->VideoEncoderCtx->gop_size = 60;
     codec->VideoEncoderCtx->max_b_frames = 16;
     codec->VideoEncoderCtx->pix_fmt = AV_PIX_FMT_YUV420P;
     codec->VideoEncoderCtx->time_base = (AVRational){1, 25};
     codec->VideoEncoderCtx->framerate = (AVRational){25, 1};
-    codec->VideoEncoderCtx->bit_rate = 1024 * 2000; // 2Mb
+    codec->VideoEncoderCtx->bit_rate = 1024 * 128; // 128KB
     AVDictionary* codecOpts = NULL;
     av_dict_set(&codecOpts, "threads", "1", 0);
-    // av_dict_set(&codecOpts, "preset", "medium", 0);
+    // av_dict_set(&codecOpts, "preset", "fast", 0);
     av_dict_set(&codecOpts, "preset", "ultrafast", 0);
     av_dict_set(&codecOpts, "tune", "zerolatency", 0);
     err = avcodec_open2(codec->VideoEncoderCtx, codec->VideoEncoder, &codecOpts);
@@ -38,8 +40,10 @@ Codec* InitCodec() {
         strcpy(codec->error_str, "Could not allocate video decoder context");
         return codec;
     }
-    codec->VideoDecoderCtx->width = 1920;
-    codec->VideoDecoderCtx->height = 1080;
+    // codec->VideoDecoderCtx->width = 1920;
+    // codec->VideoDecoderCtx->height = 1080;
+    codec->VideoDecoderCtx->width = 640;
+    codec->VideoDecoderCtx->height = 360;
     codec->VideoDecoderCtx->pix_fmt = AV_PIX_FMT_YUV420P;
     err = avcodec_open2(codec->VideoDecoderCtx, codec->VideoDecoder, NULL);
     if (err < 0) {

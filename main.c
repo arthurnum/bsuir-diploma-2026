@@ -5,6 +5,8 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
+#include <poll.h>
+
 #include "shared/net.h"
 #include "shared/protocol.h"
 #include "client_state.h"
@@ -81,7 +83,24 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
         send_to_bin(udpClient, addr, data, FRAME_PACKET_SIZE);
 
         // wait ACK
-        recv_packet(udpClient, NULL);
+        // struct pollfd fd;
+        // int ret;
+
+        // fd.fd = udpClient;
+        // fd.events = POLLIN;
+        // ret = poll(&fd, 1, 200); // timeout
+        // switch (ret) {
+        //     case -1:
+        //         // Error
+        //         break;
+        //     case 0:
+        //         // Timeout
+        //         break;
+        //     default:
+        //         recv_packet(udpClient, NULL);
+        //         break;
+        // }
+
     }
 
     free(data);
@@ -150,8 +169,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     pxls = calloc(3110400, 1);
 
     udpClient = make_client();
-    serverAddr = address_with_port("127.0.0.1", 44323);
-    // serverAddr = address_with_port("46.243.183.18", 44323);
+    // serverAddr = address_with_port("127.0.0.1", 44323);
+    serverAddr = address_with_port("46.243.183.18", 44323);
     requestConnectionIdx(serverAddr);
     uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
     recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
@@ -228,7 +247,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     int err;
     ClientState* state = appstate;
     Uint64 timestampNS = 0;
-    SDL_Surface *frame = SDL_AcquireCameraFrame(camera, &timestampNS);
+    SDL_Surface *frameAc = SDL_AcquireCameraFrame(camera, &timestampNS);
+
+    SDL_Surface *frame = SDL_ScaleSurface(frameAc, 640, 360, SDL_SCALEMODE_PIXELART);
+    // SDL_Surface *frame = SDL_ScaleSurface(frameAc, 1920, 1080, SDL_SCALEMODE_LINEAR);
 
     if (frame != NULL) {
         unsigned char* px = frame->pixels;
@@ -269,9 +291,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             rawCameraFrame->pts = currentFramePts;
             currentFramePts++;
 
-            memcpy(rawCameraFrame->data[0], px, 2073600);
-            memcpy(rawCameraFrame->data[1], &px[2073600], 518400);
-            memcpy(rawCameraFrame->data[2], &px[2592000], 518400);
+            // memcpy(rawCameraFrame->data[0], px, 2073600);
+            // memcpy(rawCameraFrame->data[1], &px[2073600], 518400);
+            // memcpy(rawCameraFrame->data[2], &px[2592000], 518400);
+            memcpy(rawCameraFrame->data[0], px, 230400);
+            memcpy(rawCameraFrame->data[1], &px[230400], 57600);
+            memcpy(rawCameraFrame->data[2], &px[288000], 57600);
             rawCameraFrame = NULL;
 
             EncodeVideo(codec);
@@ -283,7 +308,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         }
         // Do not call SDL_DestroySurface() on the returned surface!
         // It must be given back to the camera subsystem with SDL_ReleaseCameraFrame!
-        SDL_ReleaseCameraFrame(camera, frame);
+        SDL_ReleaseCameraFrame(camera, frameAc);
     }
 
     int frameBufSize = codec->AudioEncoderCtx->frame_size * 4; // 4 bytes per sample
@@ -335,24 +360,58 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             packet->size = frameSize;
             uint8_t* dataPtr = packet->data;
 
+            SDL_Log("Frame  -");
+
             memcpy(dataPtr, &resData[12], dataSize);
             dataPtr += dataSize;
-            while (resData[11] != FRAME_FLAG_EOF) {
-                recv_packet(udpClient, NULL);
-                resData = get_read_buffer();
-                dataSize = get_uint32_i(resData, 7);
-                memcpy(dataPtr, &resData[12], dataSize);
-                dataPtr += dataSize;
+
+            struct pollfd fd;
+            int ret;
+
+            fd.fd = udpClient;
+            fd.events = POLLIN;
+
+
+            char feed = 1;
+            while (feed) {
+            // while (resData[11] != FRAME_FLAG_EOF || ret != 0) { // ADD TIMEOUT
+                ret = poll(&fd, 1, 200); // timeout
+                switch (ret) {
+                    case -1:
+                        // Error
+                        feed = 0;
+                        break;
+                    case 0:
+                        // Timeout
+                        feed = 0;
+                        break;
+                    default:
+                        recv_packet(udpClient, NULL);
+                        resData = get_read_buffer();
+                        if (resData[0] == PROTOCOL_FRAME) {
+                            dataSize = get_uint32_i(resData, 7);
+                            memcpy(dataPtr, &resData[12], dataSize);
+                            dataPtr += dataSize;
+                            if (resData[11] == FRAME_FLAG_EOF) {
+                                feed = 0;
+                            }
+                        }
+                        break;
+                }
             }
+            SDL_Log("Frame  - done");
             packet = NULL;
 
             DecodeVideo(codec);
             AVFrame* decodedCameraFrame = av_frame_clone(codec->VideoDecodeOutFrame);
             if (texture2) {
                 if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
-                    memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
-                    memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
-                    memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
+                    // memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
+                    // memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
+                    // memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
+                    memcpy(pxls, decodedCameraFrame->buf[0]->data, 230400);
+                    memcpy(&pxls[230400], decodedCameraFrame->buf[1]->data, 57600);
+                    memcpy(&pxls[288000], decodedCameraFrame->buf[2]->data, 57600);
                     SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
                 }
             }

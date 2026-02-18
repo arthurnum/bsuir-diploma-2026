@@ -74,8 +74,8 @@ int main() {
 
                 eof = fill_frame_buffer(connMap, idx, data);
 
-                bufResponse[0] = PROTOCOL_FRAME_ACK;
-                send_to_bin(server, a, bufResponse, 8);
+                // bufResponse[0] = PROTOCOL_FRAME_ACK;
+                // send_to_bin(server, a, bufResponse, 8);
 
                 if (eof) {
                     sendFramePacket(a, connMap, idx);
