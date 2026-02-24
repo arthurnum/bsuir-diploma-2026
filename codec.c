@@ -21,7 +21,7 @@ Codec* InitCodec() {
     codec->VideoEncoderCtx->pix_fmt = AV_PIX_FMT_YUV420P;
     codec->VideoEncoderCtx->time_base = (AVRational){1, 25};
     codec->VideoEncoderCtx->framerate = (AVRational){25, 1};
-    codec->VideoEncoderCtx->bit_rate = 1024 * 128; // 128KB
+    codec->VideoEncoderCtx->bit_rate = 1024 * 1000; // 1MB
     AVDictionary* codecOpts = NULL;
     av_dict_set(&codecOpts, "threads", "1", 0);
     // av_dict_set(&codecOpts, "preset", "fast", 0);

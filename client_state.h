@@ -3,6 +3,7 @@
 
 typedef struct ClientState {
     char mic_on;
+    char next_frame_ready;
 } ClientState;
 
 #endif

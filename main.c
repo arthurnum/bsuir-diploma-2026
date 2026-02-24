@@ -26,6 +26,8 @@ static SDL_AudioDeviceID recDeviceID, playDeviceID;
 static SDL_AudioStream* recStream;
 static SDL_AudioStream* playStream;
 
+static const SDL_Thread* netThread = NULL;
+
 // Coder
 static Codec* codec = NULL;
 
@@ -36,8 +38,6 @@ static uint8_t *pxls = NULL;
 static int udpClient;
 static net_sock_addr* serverAddr;
 static int connectionIdx = 0;
-
-static int total = 0;
 
 static uint32_t frameId = 0;
 
@@ -81,26 +81,6 @@ void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
         memcpy(&data[18], &pkt->data[i], dataSize);
         i += FRAME_CHUNK;
         send_to_bin(udpClient, addr, data, FRAME_PACKET_SIZE);
-
-        // wait ACK
-        // struct pollfd fd;
-        // int ret;
-
-        // fd.fd = udpClient;
-        // fd.events = POLLIN;
-        // ret = poll(&fd, 1, 200); // timeout
-        // switch (ret) {
-        //     case -1:
-        //         // Error
-        //         break;
-        //     case 0:
-        //         // Timeout
-        //         break;
-        //     default:
-        //         recv_packet(udpClient, NULL);
-        //         break;
-        // }
-
     }
 
     free(data);
@@ -118,6 +98,67 @@ void sendAudioFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     memcpy(&data[5], pkt->data, pkt->size);
     send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
     free(data);
+}
+
+void handleNetData(ClientState *state) {
+    uint8_t* resData = get_read_buffer();
+
+    if (resData[0] == PROTOCOL_FRAME) {
+        AVPacket* packet = codec->VideoDecodeInPacket;
+        av_packet_make_writable(packet);
+        uint32_t frameSize = get_uint32_i(resData, 3);
+        uint32_t dataSize = get_uint32_i(resData, 7);
+        uint16_t chunkNumber = get_uint16_i(resData, 12);
+        packet->size = frameSize;
+        uint8_t* dataPtr = packet->data + FRAME_CHUNK * chunkNumber;
+        memcpy(dataPtr, &resData[14], dataSize);
+        packet = NULL;
+
+        if (resData[11] == FRAME_FLAG_EOF) {
+            DecodeVideo(codec);
+            AVFrame* decodedCameraFrame = av_frame_clone(codec->VideoDecodeOutFrame);
+            if (texture2) {
+                if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
+                    // memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
+                    // memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
+                    // memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
+                    memcpy(pxls, decodedCameraFrame->buf[0]->data, 230400);
+                    memcpy(&pxls[230400], decodedCameraFrame->buf[1]->data, 57600);
+                    memcpy(&pxls[288000], decodedCameraFrame->buf[2]->data, 57600);
+                    state->next_frame_ready = 1;
+                    // SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
+                }
+            }
+            av_frame_free(&decodedCameraFrame);
+        }
+    }
+
+    if (resData[0] == PROTOCOL_FRAME_AUDIO) {
+        AVPacket* packetAudio = codec->AudioDecodeInPacket;
+        av_packet_make_writable(packetAudio);
+        uint16_t frameSize = get_uint16_i(resData, 3);
+        packetAudio->size = frameSize;
+        memcpy(packetAudio->data, &resData[5], frameSize);
+        packetAudio = NULL;
+
+        DecodeAudio(codec);
+        AVFrame* decodedAudioFrame = av_frame_clone(codec->AudioDecodeOutFrame);
+        if (decodedAudioFrame && decodedAudioFrame->buf[0]) {
+            SDL_PutAudioStreamData(playStream, decodedAudioFrame->buf[0]->data, 3840);
+        }
+        av_frame_free(&decodedAudioFrame);
+    }
+}
+
+int SDLCALL serverListen(void* userData) {
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_HIGH);
+    ClientState* state = (ClientState*)userData;
+    while (1) {
+        if (recv_packet_dontwait(udpClient) > 0) {
+            handleNetData(state);
+        }
+    }
+    return 0;
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
@@ -210,6 +251,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_ResumeAudioStreamDevice(playStream);
 
     *appstate = (ClientState*)malloc(sizeof(ClientState));
+
+    netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
@@ -309,6 +352,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         // Do not call SDL_DestroySurface() on the returned surface!
         // It must be given back to the camera subsystem with SDL_ReleaseCameraFrame!
         SDL_ReleaseCameraFrame(camera, frameAc);
+        SDL_DestroySurface(frame);
     }
 
     int frameBufSize = codec->AudioEncoderCtx->frame_size * 4; // 4 bytes per sample
@@ -316,15 +360,11 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         void* recordingBuffer = calloc(4096, 1);
 
         int sizetest = SDL_GetAudioStreamData(recStream, recordingBuffer, frameBufSize);
-        total += sizetest;
         if (sizetest < 0) {
             SDL_Log("SDL_GetAudioStreamData error: %s", SDL_GetError());
         }
-        SDL_Log("Size: %d\tSamples: %d\tTotal: %dKb", sizetest, sizetest / 2, total / 1024);
-        // SDL_PutAudioStreamData(playStream, recordingBuffer, sizetest);
 
         AVFrame* audioFrameEncode = codec->AudioEncodeInFrame;
-
         if (!audioFrameEncode->buf[0]) {
             err = av_frame_get_buffer(audioFrameEncode, 0);
             if (err < 0) {
@@ -350,53 +390,36 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         av_packet_free(&audioPkt);
     }
 
-    if (recv_packet_dontwait(udpClient) > 0) {
-        uint8_t* resData = get_read_buffer();
+    // struct pollfd fd;
+    // int ret;
+    // fd.fd = udpClient;
+    // fd.events = POLLIN;
+    // ret = poll(&fd, 1, 20); // timeout
+    // SDL_Log("POLL socket: %d", ret);
+    // switch (ret) {
+    //     case -1:
+    //         // Error
+    //         break;
+    //     case 0:
+    //         // Timeout
+    //         break;
+    //     default:
+    //         recv_packet(udpClient, NULL);
+    //         break;
+    // }
 
-        if (resData[0] == PROTOCOL_FRAME) {
-            AVPacket* packet = codec->VideoDecodeInPacket;
-            av_packet_make_writable(packet);
-            uint32_t frameSize = get_uint32_i(resData, 3);
-            uint32_t dataSize = get_uint32_i(resData, 7);
-            uint16_t chunkNumber = get_uint16_i(resData, 12);
-            packet->size = frameSize;
-            uint8_t* dataPtr = packet->data + FRAME_CHUNK * chunkNumber;
-            memcpy(dataPtr, &resData[14], dataSize);
-            packet = NULL;
+    // if (recv_packet_dontwait(udpClient) > 0) {
+    //     handleNetData();
 
-            if (resData[11] == FRAME_FLAG_EOF) {
-                DecodeVideo(codec);
-                AVFrame* decodedCameraFrame = av_frame_clone(codec->VideoDecodeOutFrame);
-                if (texture2) {
-                    if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
-                        // memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
-                        // memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
-                        // memcpy(&pxls[2592000], decodedCameraFrame->buf[2]->data, 518400);
-                        memcpy(pxls, decodedCameraFrame->buf[0]->data, 230400);
-                        memcpy(&pxls[230400], decodedCameraFrame->buf[1]->data, 57600);
-                        memcpy(&pxls[288000], decodedCameraFrame->buf[2]->data, 57600);
-                        SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
-                    }
-                }
-                av_frame_free(&decodedCameraFrame);
-            }
-        }
+    //     if (recv_packet_dontwait(udpClient) > 0) {
+    //         handleNetData();
+    //     }
+    // }
 
-        if (resData[0] == PROTOCOL_FRAME_AUDIO) {
-            AVPacket* packetAudio = codec->AudioDecodeInPacket;
-            av_packet_make_writable(packetAudio);
-            uint16_t frameSize = get_uint16_i(resData, 3);
-            packetAudio->size = frameSize;
-            memcpy(packetAudio->data, &resData[5], frameSize);
-            packetAudio = NULL;
-
-            DecodeAudio(codec);
-            AVFrame* decodedAudioFrame = av_frame_clone(codec->AudioDecodeOutFrame);
-            if (decodedAudioFrame && decodedAudioFrame->buf[0]) {
-                SDL_PutAudioStreamData(playStream, decodedAudioFrame->buf[0]->data, 3840);
-            }
-            av_frame_free(&decodedAudioFrame);
-        }
+    if (state->next_frame_ready) {
+        // SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
+        SDL_UpdateTexture(texture2, NULL, pxls, 640);
+        state->next_frame_ready = 0;
     }
 
     SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
