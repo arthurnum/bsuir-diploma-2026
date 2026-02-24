@@ -8,6 +8,7 @@ target_sources(Client
   PRIVATE
     main.c
     codec.c
+    device.c
     shared/net.c
 )
 

@@ -1,5 +1,5 @@
-#ifndef __DIMPLOMA_S_CONN_MAP_H
-#define __DIMPLOMA_S_CONN_MAP_H
+#ifndef __DIPLOMA_S_CONN_MAP_H
+#define __DIPLOMA_S_CONN_MAP_H
 
 #include <stdlib.h>
 #include <stdint.h>

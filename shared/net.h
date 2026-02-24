@@ -1,5 +1,5 @@
-#ifndef __DIMPLOMA_NET_H
-#define __DIMPLOMA_NET_H
+#ifndef __DIPLOMA_NET_H
+#define __DIPLOMA_NET_H
 
 #include <stdlib.h>
 #include <sys/socket.h>

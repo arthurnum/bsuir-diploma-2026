@@ -1,7 +1,9 @@
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 #include <stdio.h>
-#include <SDL3/SDL.h>
+
+#include "device.h"
 #include <SDL3/SDL_main.h>
+
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
@@ -166,31 +168,20 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     int devcount = 0;
     int err;
 
-    SDL_SetAppMetadata("Example Camera Read and Draw", "1.0", "com.example.camera-read-and-draw");
+    SDL_SetAppMetadata("BSUIR Eremeev diploma", "1.0", "com.example.bsuir-eremeev-diploma");
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_CAMERA | SDL_INIT_AUDIO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer("examples/camera/read-and-draw", 800, 480, 0, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("BSUIR Eremeev diploma", 800, 480, 0, &window, &renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    devices = SDL_GetCameras(&devcount);
-    if (devices == NULL) {
-        SDL_Log("Couldn't enumerate camera devices: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    } else if (devcount == 0) {
-        SDL_Log("Couldn't find any camera devices! Please connect a camera and try again.");
-        return SDL_APP_FAILURE;
-    }
-
-    camera = SDL_OpenCamera(devices[0], NULL);  // just take the first thing we see in any format it wants.
-    SDL_free(devices);
+    camera = device_open_camera();
     if (camera == NULL) {
-        SDL_Log("Couldn't open camera: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
@@ -251,6 +242,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_ResumeAudioStreamDevice(playStream);
 
     *appstate = (ClientState*)malloc(sizeof(ClientState));
+    ((ClientState*)(*appstate))->camera_on = 1;
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
@@ -277,6 +269,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
                 state->mic_on = !state->mic_on;
                 state->mic_on ? SDL_ResumeAudioStreamDevice(recStream) : SDL_PauseAudioStreamDevice(recStream) ;
                 break;
+            case SDL_SCANCODE_C:
+                state->camera_on = !state->camera_on;
+                if (state->camera_on) {
+                    camera = device_open_camera();
+                } else {
+                    SDL_CloseCamera(camera);
+                }
             default:
                 break;
         }
@@ -290,34 +289,29 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     int err;
     ClientState* state = appstate;
     Uint64 timestampNS = 0;
-    SDL_Surface *frameAc = SDL_AcquireCameraFrame(camera, &timestampNS);
 
-    SDL_Surface *frame = SDL_ScaleSurface(frameAc, 640, 360, SDL_SCALEMODE_PIXELART);
-    // SDL_Surface *frame = SDL_ScaleSurface(frameAc, 1920, 1080, SDL_SCALEMODE_LINEAR);
+    if (isCameraReady && state->camera_on) {
+        SDL_Surface *frameAc = SDL_AcquireCameraFrame(camera, &timestampNS);
+        SDL_Surface *frame = SDL_ScaleSurface(frameAc, 640, 360, SDL_SCALEMODE_PIXELART);
 
-    if (frame != NULL) {
-        unsigned char* px = frame->pixels;
-        // SDL_Log("%u\t%u\t%u", px[2073599], px[2073600], px[3110400]);
-        /* Some platforms (like Emscripten) don't know _what_ the camera offers
-           until the user gives permission, so we build the texture and resize
-           the window when we get a first frame from the camera. */
-        if (!texture) {
-            // SDL_SetWindowSize(window, frame->w, frame->h);  /* Resize the window to match */
-            texture = SDL_CreateTexture(renderer, frame->format, SDL_TEXTUREACCESS_STREAMING, frame->w, frame->h);
-        }
-        if (!texture2) {
-            texture2 = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STREAMING, frame->w, frame->h);
-        }
+        if (frame != NULL) {
+            unsigned char* px = frame->pixels;
 
-        if (texture) {
-            SDL_UpdateTexture(texture, NULL, frame->pixels, frame->pitch);
-        }
+            if (!texture) {
+                texture = SDL_CreateTexture(renderer, frame->format, SDL_TEXTUREACCESS_STREAMING, frame->w, frame->h);
+            }
+            if (!texture2) {
+                texture2 = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STREAMING, frame->w, frame->h);
+            }
 
-        AVFrame* rawCameraFrame = codec->VideoEncodeInFrame;
-        rawCameraFrame->width = frame->w;
-        rawCameraFrame->height = frame->h;
+            if (texture) {
+                SDL_UpdateTexture(texture, NULL, frame->pixels, frame->pitch);
+            }
 
-        if (isCameraReady) {
+            AVFrame* rawCameraFrame = codec->VideoEncodeInFrame;
+            rawCameraFrame->width = frame->w;
+            rawCameraFrame->height = frame->h;
+
             if (!rawCameraFrame->buf[0]) {
                 err = av_frame_get_buffer(rawCameraFrame, 0);
                 if (err < 0) {
@@ -348,11 +342,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 sendFramePacket(serverAddr, avp);
             }
             av_packet_free(&avp);
+
+            // Do not call SDL_DestroySurface() on the returned surface!
+            // It must be given back to the camera subsystem with SDL_ReleaseCameraFrame!
+            SDL_ReleaseCameraFrame(camera, frameAc);
+            SDL_DestroySurface(frame);
         }
-        // Do not call SDL_DestroySurface() on the returned surface!
-        // It must be given back to the camera subsystem with SDL_ReleaseCameraFrame!
-        SDL_ReleaseCameraFrame(camera, frameAc);
-        SDL_DestroySurface(frame);
     }
 
     int frameBufSize = codec->AudioEncoderCtx->frame_size * 4; // 4 bytes per sample
@@ -408,14 +403,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     //         break;
     // }
 
-    // if (recv_packet_dontwait(udpClient) > 0) {
-    //     handleNetData();
-
-    //     if (recv_packet_dontwait(udpClient) > 0) {
-    //         handleNetData();
-    //     }
-    // }
-
     if (state->next_frame_ready) {
         // SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
         SDL_UpdateTexture(texture2, NULL, pxls, 640);
@@ -424,13 +411,15 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
-    if (texture) {  /* draw the latest camera frame, if available. */
-        SDL_RenderTextureRotated(renderer, texture, NULL, targetRect, 0, NULL, SDL_FLIP_HORIZONTAL);
-        // SDL_RenderTexture(renderer, texture, NULL, targetRect);
-    }
-    if (texture2) {  /* draw the latest camera frame, if available. */
-        SDL_RenderTextureRotated(renderer, texture2, NULL, targetRect2, 0, NULL, SDL_FLIP_HORIZONTAL);
-        // SDL_RenderTexture(renderer, texture2, NULL, targetRect2);
+    if (state->camera_on) {
+        if (texture) {  /* draw the latest camera frame, if available. */
+            SDL_RenderTextureRotated(renderer, texture, NULL, targetRect, 0, NULL, SDL_FLIP_HORIZONTAL);
+            // SDL_RenderTexture(renderer, texture, NULL, targetRect);
+        }
+        if (texture2) {  /* draw the latest camera frame, if available. */
+            SDL_RenderTextureRotated(renderer, texture2, NULL, targetRect2, 0, NULL, SDL_FLIP_HORIZONTAL);
+            // SDL_RenderTexture(renderer, texture2, NULL, targetRect2);
+        }
     }
     SDL_RenderPresent(renderer);
 

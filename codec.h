@@ -1,5 +1,5 @@
-#ifndef __DIMPLOMA_CODEC_H
-#define __DIMPLOMA_CODEC_H
+#ifndef __DIPLOMA_CODEC_H
+#define __DIPLOMA_CODEC_H
 
 #include <libavcodec/avcodec.h>
 
