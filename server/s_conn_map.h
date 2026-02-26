@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include "../shared/net.h"
 
 typedef struct SConnection {
     uint8_t* frame_buf;
@@ -12,6 +13,7 @@ typedef struct SConnection {
     uint16_t next_chunk_number;
     uint8_t is_frame_eof;
     char* meta_str;
+    net_sock_addr* addr;
 } SConnection;
 
 typedef struct SConnectionMap {

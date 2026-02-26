@@ -206,8 +206,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     requestConnectionIdx(serverAddr);
     uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
     recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
+    connectionIdx = get_uint16_i(readBuf, 1);
     printf("OPT code: %d\n", readBuf[0]);
-    printf("Connection Idx: %d\n", *(uint16_t*)(&readBuf[1]));
+    // printf("Connection Idx: %d\n", *(uint16_t*)(&readBuf[1]));
+    printf("Connection Idx: %d\n", connectionIdx);
     printf("Meta string: %s\n", &readBuf[3]);
 
     SDL_AudioDeviceID* recAudioDevices = SDL_GetAudioRecordingDevices(NULL);

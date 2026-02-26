@@ -1,7 +1,6 @@
 #include <string.h>
 
 #include "s_conn_map.h"
-#include "../shared/net.h"
 
 SConnectionMap* make_conn_map() {
     SConnectionMap* map = malloc(sizeof(SConnectionMap));
