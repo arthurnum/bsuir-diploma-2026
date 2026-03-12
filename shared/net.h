@@ -33,5 +33,7 @@ int get_last_error();
 
 uint16_t get_uint16_i(uint8_t* data, int i);
 uint32_t get_uint32_i(uint8_t* data, int i);
+void put_uint16_i(uint8_t* data, int i, uint16_t value);
+void put_uint32_i(uint8_t* data, int i, uint32_t value);
 
 #endif

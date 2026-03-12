@@ -80,9 +80,23 @@ void* get_read_buffer() { return readBuffer; }
 int get_last_error() { return lastError; }
 
 uint16_t get_uint16_i(uint8_t* data, int i) {
-    return *(uint16_t*)&data[i];
+    uint16_t netValue;
+    memcpy(&netValue, &data[i], sizeof(netValue));
+    return ntohs(netValue);
 }
 
 uint32_t get_uint32_i(uint8_t* data, int i) {
-    return *(uint32_t*)&data[i];
+    uint32_t netValue;
+    memcpy(&netValue, &data[i], sizeof(netValue));
+    return ntohl(netValue);
+}
+
+void put_uint16_i(uint8_t* data, int i, uint16_t value) {
+    uint16_t netValue = htons(value);
+    memcpy(&data[i], &netValue, sizeof(netValue));
+}
+
+void put_uint32_i(uint8_t* data, int i, uint32_t value) {
+    uint32_t netValue = htonl(value);
+    memcpy(&data[i], &netValue, sizeof(netValue));
 }

@@ -19,8 +19,8 @@ void sendFramePacket(SConnectionMap* connMap, uint16_t idx) {
     uint8_t* data = malloc(READ_BUFFER_SIZE);
     data[0] = PROTOCOL_FRAME;
     SConnection* conn = &connMap->entries[idx];
-    *(uint16_t*)(&data[1]) = idx;
-    *(uint32_t*)(&data[3]) = conn->frame_size;
+    put_uint16_i(data, 1, idx);
+    put_uint32_i(data, 3, conn->frame_size);
 
     uint16_t chunkNumber = 0;
     int i = 0;
@@ -31,9 +31,9 @@ void sendFramePacket(SConnectionMap* connMap, uint16_t idx) {
             dataSize = (uint32_t)(conn->frame_size - i);
             oef_flag = FRAME_FLAG_EOF;
         }
-        *(uint32_t*)(&data[7]) = dataSize;
+        put_uint32_i(data, 7, dataSize);
         data[11] = oef_flag;
-        *(uint16_t*)(&data[12]) = chunkNumber;
+        put_uint16_i(data, 12, chunkNumber);
         chunkNumber++;
         memcpy(&data[14], &conn->frame_buf[i], dataSize);
         i += FRAME_CHUNK;
@@ -81,7 +81,7 @@ int main() {
                 printf("New connection: %s", conn->meta_str);
 
                 bufResponse[0] = PROTOCOL_ASSIGN_CONNECTION_IDX;
-                *(uint16_t*)(&bufResponse[1]) = idx;
+                put_uint16_i(bufResponse,1, idx);
                 memcpy(&bufResponse[3], conn->meta_str, 32);
                 send_to_bin(server, conn->addr, bufResponse, 64);
                 break;
