@@ -168,6 +168,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     int devcount = 0;
     int err;
 
+    // Initialize network (required for Windows)
+    net_init();
+
     SDL_SetAppMetadata("BSUIR Eremeev diploma", "1.0", "com.example.bsuir-eremeev-diploma");
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_CAMERA | SDL_INIT_AUDIO)) {
@@ -434,5 +437,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     SDL_CloseAudioDevice(recDeviceID);
     SDL_Quit();
     FreeCodec(codec);
+    net_cleanup();
     /* SDL will clean up the window/renderer for us. */
 }

@@ -2,8 +2,56 @@
 #include <stdio.h>
 #include <string.h>
 
+#if defined(_WIN32) || defined(_WIN64)
+    static WSADATA wsaData;
+#else
+    #include <fcntl.h>
+    #include <errno.h>
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+    static WSADATA wsaData;
+#endif
+
+void net_init() {
+#if defined(_WIN32) || defined(_WIN64)
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        fprintf(stderr, "WSAStartup failed: %d\n", WSAGetLastError());
+        exit(1);
+    }
+#endif
+}
+
+void net_cleanup() {
+#if defined(_WIN32) || defined(_WIN64)
+    WSACleanup();
+#endif
+}
+
 int make_socket() {
-    return socket(AF_INET, SOCK_DGRAM, 0);
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+#if defined(_WIN32) || defined(_WIN64)
+    if (sock == INVALID_SOCKET) {
+        fprintf(stderr, "socket failed: %d\n", WSAGetLastError());
+        return -1;
+    }
+#else
+    if (sock < 0) {
+        perror("socket failed");
+        return -1;
+    }
+#endif
+
+    // Set non-blocking mode
+#if defined(_WIN32) || defined(_WIN64)
+    u_long mode = 1;
+    ioctlsocket(sock, FIONBIO, &mode);
+#else
+    int flags = fcntl(sock, F_GETFL, 0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+#endif
+
+    return sock;
 }
 
 net_sock_addr* address_local_port(int port) {
@@ -39,7 +87,11 @@ int make_server_on_port(int port) {
 
 int send_to_bin(int socket, net_sock_addr* addr, uint8_t* data, int size) {
     // net_sock_addr* addr = address_with_port(ip, port);
+#if defined(_WIN32) || defined(_WIN64)
+    return sendto(socket, (const char*)data, size, 0, (struct sockaddr*)addr, sizeof(net_sock_addr));
+#else
     return sendto(socket, data, size, MSG_DONTWAIT, (struct sockaddr*)addr, sizeof(net_sock_addr));
+#endif
 }
 
 int recv_packet(int socket, net_sock_addr* addr) {
@@ -48,8 +100,13 @@ int recv_packet(int socket, net_sock_addr* addr) {
     } else {
         memset(readBuffer, 0, READ_BUFFER_SIZE);
     }
+#if defined(_WIN32) || defined(_WIN64)
+    int addrLen = sizeof(net_sock_addr);
+    return recvfrom(socket, (char*)readBuffer, READ_BUFFER_SIZE, 0, (struct sockaddr*)addr, &addrLen);
+#else
     socklen_t addrLen = sizeof(net_sock_addr);
     return recvfrom(socket, readBuffer, READ_BUFFER_SIZE, 0, (struct sockaddr*)addr, &addrLen);
+#endif
 }
 
 int recv_packet_dontwait(int socket) {
@@ -58,7 +115,11 @@ int recv_packet_dontwait(int socket) {
     } else {
         memset(readBuffer, 0, READ_BUFFER_SIZE);
     }
+#if defined(_WIN32) || defined(_WIN64)
+    return recv(socket, (char*)readBuffer, READ_BUFFER_SIZE, 0);
+#else
     return recv(socket, readBuffer, READ_BUFFER_SIZE, MSG_DONTWAIT);
+#endif
 }
 
 int recv_packet_dontwait_peek(int socket) {
@@ -67,7 +128,11 @@ int recv_packet_dontwait_peek(int socket) {
     } else {
         memset(readBuffer, 0, READ_BUFFER_SIZE);
     }
+#if defined(_WIN32) || defined(_WIN64)
+    return recv(socket, (char*)readBuffer, READ_BUFFER_SIZE, MSG_PEEK);
+#else
     return recv(socket, readBuffer, READ_BUFFER_SIZE, MSG_DONTWAIT | MSG_PEEK);
+#endif
 }
 
 char* describe_address(net_sock_addr* addr) {

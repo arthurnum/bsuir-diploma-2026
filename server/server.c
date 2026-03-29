@@ -1,9 +1,14 @@
 #include <stdio.h>
-#include <unistd.h>
 #include <string.h>
 #include "../shared/net.h"
 #include "../shared/protocol.h"
 #include "s_conn_map.h"
+
+#if defined(_WIN32) || defined(_WIN64)
+    // close() is not available on Windows, use CLOSE_SOCKET macro
+#else
+    #include <unistd.h>
+#endif
 
 static int server;
 
@@ -41,6 +46,10 @@ void retransmitAudioFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* 
 int main() {
     int size;
     int max = 0;
+
+    // Initialize network (required for Windows)
+    net_init();
+
     server = make_server_on_port(44323);
     printf("Socket FD %d\n", server);
 
@@ -93,6 +102,7 @@ int main() {
         free(bufResponse);
     }
 
-    close(server);
+    CLOSE_SOCKET(server);
+    net_cleanup();
     return 0;
 }

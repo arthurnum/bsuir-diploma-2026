@@ -2,11 +2,27 @@
 #define __DIPLOMA_NET_H
 
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <stdint.h>
 
-typedef struct sockaddr_in net_sock_addr;
+#if defined(_WIN32) || defined(_WIN64)
+    // Windows
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    typedef struct sockaddr_in net_sock_addr;
+    #define CLOSE_SOCKET closesocket
+    #define IS_VALID_SOCKET(s) ((s) != INVALID_SOCKET)
+    #define GET_SOCKET_ERROR() WSAGetLastError()
+#else
+    // Unix/Linux/macOS
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    typedef struct sockaddr_in net_sock_addr;
+    #define CLOSE_SOCKET close
+    #define IS_VALID_SOCKET(s) ((s) >= 0)
+    #define GET_SOCKET_ERROR() errno
+#endif
 
 static int lastError = 0;
 
@@ -22,6 +38,10 @@ static void* readBuffer;
 
 int make_client();
 int make_server_on_port(int port);
+
+// Cross-platform socket initialization/cleanup
+void net_init();
+void net_cleanup();
 
 int send_to_bin(int socket, net_sock_addr* addr, uint8_t* data, int size);
 int recv_packet(int socket, net_sock_addr* addr);
