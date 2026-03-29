@@ -16,6 +16,10 @@ static void* readBuffer;
 #define FRAME_PACKET_SIZE 530 // 512 data + 18 header
 #define FRAME_CHUNK 512
 
+// Audio packet does not exceed 512 bytes
+// add 5 bytes for header
+#define FRAME_AUDIO_PACKET_SIZE 517
+
 int make_client();
 int make_server_on_port(int port);
 

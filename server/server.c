@@ -7,47 +7,36 @@
 
 static int server;
 
-// void sendFramePacket(net_sock_addr* addr, SConnectionMap* connMap, uint16_t idx) {
-void sendFramePacket(SConnectionMap* connMap, uint16_t idx) {
+void retransmitFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* data) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
     // [3] frame size [32bit]
     // [7] data size [32bit]
     // [11] frame EOF flag [8bit]
     // [12] chunk number [16bit]
-    // [14] data [512B]
-    uint8_t* data = malloc(READ_BUFFER_SIZE);
-    data[0] = PROTOCOL_FRAME;
-    SConnection* conn = &connMap->entries[idx];
-    put_uint16_i(data, 1, idx);
-    put_uint32_i(data, 3, conn->frame_size);
-
-    uint16_t chunkNumber = 0;
-    int i = 0;
-    while (i < conn->frame_size) {
-        uint32_t dataSize = FRAME_CHUNK;
-        uint8_t oef_flag = 0;
-        if (i + FRAME_CHUNK > conn->frame_size) {
-            dataSize = (uint32_t)(conn->frame_size - i);
-            oef_flag = FRAME_FLAG_EOF;
-        }
-        put_uint32_i(data, 7, dataSize);
-        data[11] = oef_flag;
-        put_uint16_i(data, 12, chunkNumber);
-        chunkNumber++;
-        memcpy(&data[14], &conn->frame_buf[i], dataSize);
-        i += FRAME_CHUNK;
-
-        for (int connIndex = 0; connIndex < connMap->size; connIndex++) {
-            if (connIndex != idx) {
-                // send_to_bin(server, addr, data, FRAME_PACKET_SIZE);
-                send_to_bin(server, connMap->entries[connIndex].addr, data, FRAME_PACKET_SIZE);
-                printf("Send frame to %s",connMap->entries[connIndex].meta_str);
-            }
+    // [14] frame ID [32bit]
+    // [18] data [512B]
+    for (int connIndex = 0; connIndex < connMap->size; connIndex++) {
+        if (connIndex != idx) {
+            send_to_bin(server, connMap->entries[connIndex].addr, data, FRAME_PACKET_SIZE);
+            // printf("Send frame to %s",connMap->entries[connIndex].meta_str);
         }
     }
-    free(data);
 }
+
+void retransmitAudioFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* data) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] frame size [16bit]
+    // [5] data [<512B]
+    for (int connIndex = 0; connIndex < connMap->size; connIndex++) {
+        if (connIndex != idx) {
+            send_to_bin(server, connMap->entries[connIndex].addr, data, FRAME_AUDIO_PACKET_SIZE);
+            // printf("Send frame to %s",connMap->entries[connIndex].meta_str);
+        }
+    }
+}
+
 
 int main() {
     int size;
@@ -75,7 +64,6 @@ int main() {
                 idx = map_new_entry(connMap);
                 conn = &connMap->entries[idx];
                 conn->meta_str = describe_address(a);
-                conn->next_chunk_number = 0;
                 conn->addr = calloc(1, sizeof(net_sock_addr));
                 memcpy(conn->addr, a, sizeof(net_sock_addr));
                 printf("New connection: %s", conn->meta_str);
@@ -88,18 +76,13 @@ int main() {
 
             case PROTOCOL_FRAME:
                 idx = get_uint16_i(data, 1);
-                eof = fill_frame_buffer(connMap, idx, data);
-
-                if (eof) {
-                    // sendFramePacket(a, connMap, idx);
-                    sendFramePacket(connMap, idx);
-                    connMap->entries[idx].next_chunk_number = 0;
-                }
+                retransmitFramePacket(connMap, idx, data);
                 break;
 
             case PROTOCOL_FRAME_AUDIO:
                 idx = get_uint16_i(data, 1);
-                send_to_bin(server, a, data, size);
+                retransmitAudioFramePacket(connMap, idx, data);
+                // send_to_bin(server, a, data, size);
                 break;
 
                 default:

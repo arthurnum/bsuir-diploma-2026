@@ -92,13 +92,13 @@ void sendAudioFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
     // [3] frame size [16bit]
-    // [5] data [512B]
-    uint8_t* data = malloc(1024);
+    // [5] data [<512B]
+    uint8_t* data = calloc(FRAME_AUDIO_PACKET_SIZE, 1);
     data[0] = PROTOCOL_FRAME_AUDIO;
     put_uint16_i(data, 1, (uint16_t)connectionIdx);
     put_uint16_i(data, 3, (uint16_t)pkt->size);
     memcpy(&data[5], pkt->data, pkt->size);
-    send_to_bin(udpClient, addr, data, READ_BUFFER_SIZE);
+    send_to_bin(udpClient, addr, data, FRAME_AUDIO_PACKET_SIZE);
     free(data);
 }
 
@@ -113,7 +113,7 @@ void handleNetData(ClientState *state) {
         uint16_t chunkNumber = get_uint16_i(resData, 12);
         packet->size = frameSize;
         uint8_t* dataPtr = packet->data + FRAME_CHUNK * chunkNumber;
-        memcpy(dataPtr, &resData[14], dataSize);
+        memcpy(dataPtr, &resData[18], dataSize);
         packet = NULL;
 
         if (resData[11] == FRAME_FLAG_EOF) {
