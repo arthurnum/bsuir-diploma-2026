@@ -7,18 +7,18 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
-#include <poll.h>
-
 #include "shared/net.h"
 #include "shared/protocol.h"
 #include "client_state.h"
 #include "codec.h"
+#include "picture_widget.h"
 
 // Nuklear
 #define NK_INCLUDE_COMMAND_USERDATA
 #define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
 #define NK_INCLUDE_FONT_BAKING
 #define NK_INCLUDE_DEFAULT_FONT
+#define NK_INCLUDE_STANDARD_IO
 #define NK_IMPLEMENTATION
 #include "nuklear.h"
 
@@ -37,11 +37,9 @@ static int server_port = 44323;
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Camera *camera = NULL;
-static SDL_Texture *texture = NULL;
-static SDL_FRect *targetRect = NULL;
 
-static SDL_Texture *texture2 = NULL;
-static SDL_FRect *targetRect2 = NULL;
+static PictureWidget *localCameraWidget = NULL;
+static PictureWidget *remoteCameraWidget = NULL;
 
 static SDL_AudioDeviceID recDeviceID, playDeviceID;
 static SDL_AudioStream* recStream;
@@ -138,7 +136,7 @@ void handleNetData(ClientState *state) {
         if (resData[11] == FRAME_FLAG_EOF) {
             DecodeVideo(codec);
             AVFrame* decodedCameraFrame = av_frame_clone(codec->VideoDecodeOutFrame);
-            if (texture2) {
+            if (picture_widget_is_initialized(remoteCameraWidget)) {
                 if (decodedCameraFrame && decodedCameraFrame->buf[0]) {
                     // memcpy(pxls, decodedCameraFrame->buf[0]->data, 2073600);
                     // memcpy(&pxls[2073600], decodedCameraFrame->buf[1]->data, 518400);
@@ -187,7 +185,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     int devcount = 0;
     int err;
 
-    SDL_SetAppMetadata("BSUIR Eremeev diploma", "1.0", "com.example.bsuir-eremeev-diploma");
+    SDL_SetAppMetadata("BSUIR Еремеев диплом", "1.0", "com.example.bsuir-eremeev-diploma");
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_CAMERA | SDL_INIT_AUDIO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
@@ -204,16 +202,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    targetRect = SDL_malloc(sizeof(SDL_FRect));
-    targetRect->x = 0;
-    targetRect->y = 0;
-    targetRect->w = 360;
-    targetRect->h = 200;
-    targetRect2 = SDL_malloc(sizeof(SDL_FRect));
-    targetRect2->x = 370;
-    targetRect2->y = 0;
-    targetRect2->w = 360;
-    targetRect2->h = 200;
+    // Создание виджетов для отображения видеокадров
+    // Локальная камера: текстура 640x360, на экране 360x200 (масштабирование)
+    localCameraWidget = picture_widget_create(370, 0, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
+    // Удалённая камера: текстура 640x360, на экране 360x200 (масштабирование)
+    remoteCameraWidget = picture_widget_create(370, 220, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
+
+    if (!localCameraWidget || !remoteCameraWidget) {
+        SDL_Log("Failed to create picture widgets");
+        return SDL_APP_FAILURE;
+    }
 
     codec = InitCodec();
 
@@ -267,18 +265,39 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
-    // Инициализация Nuklear
+// Инициализация Nuklear
     struct nk_allocator allocator = nk_sdl_allocator();
     nk_ctx = nk_sdl_init(window, renderer, allocator);
 
-    // Настройка шрифта (baked font для отображения чекбоксов и других символов)
+    // Настройка шрифта с кириллицей (Noto Sans)
     nk_atlas = nk_sdl_font_stash_begin(nk_ctx);
 
-    // Добавляем дефолтный шрифт (ProggyClean.ttf встроен в Nuklear)
+    // Загрузка шрифта Noto Sans с кириллицей
     struct nk_font_config config = nk_font_config(0);
-    struct nk_font *font = nk_font_atlas_add_default(nk_atlas, 14, &config);
+    config.range = nk_font_cyrillic_glyph_ranges();
+    struct nk_font *font = nk_font_atlas_add_from_file(
+        nk_atlas,
+        "NotoSans-Regular.ttf",  // Путь к файлу шрифта
+        16,                       // Размер шрифта
+        &config
+    );
+
+    if (!font) {
+        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Не удалось загрузить шрифт NotoSans-Regular.ttf");
+        // Можно использовать fallback на дефолтный шрифт
+        font = nk_font_atlas_add_default(nk_atlas, 14, &config);
+    }
 
     nk_sdl_font_stash_end(nk_ctx);
+
+    // Проверка успешности загрузки шрифта
+    if (!font) {
+        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Не удалось загрузить шрифт NotoSans-Regular.ttf");
+        // Fallback на дефолтный шрифт
+        nk_atlas = nk_sdl_font_stash_begin(nk_ctx);
+        font = nk_font_atlas_add_default(nk_atlas, 14, &config);
+        nk_sdl_font_stash_end(nk_ctx);
+    }
 
     // Устанавливаем шрифт
     nk_style_set_font(nk_ctx, &font->handle);
@@ -316,8 +335,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
                 state->camera_on = !state->camera_on;
                 if (state->camera_on) {
                     camera = device_open_camera();
+                    SDL_Log("Камера включена");
                 } else {
                     SDL_CloseCamera(camera);
+                    SDL_Log("Камера выключена");
                 }
             default:
                 break;
@@ -343,16 +364,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         if (frame != NULL) {
             unsigned char* px = frame->pixels;
 
-            if (!texture) {
-                texture = SDL_CreateTexture(renderer, frame->format, SDL_TEXTUREACCESS_STREAMING, frame->w, frame->h);
-            }
-            if (!texture2) {
-                texture2 = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_NV12, SDL_TEXTUREACCESS_STREAMING, frame->w, frame->h);
-            }
-
-            if (texture) {
-                SDL_UpdateTexture(texture, NULL, frame->pixels, frame->pitch);
-            }
+            // Обновление локального виджета камеры
+            picture_widget_update(localCameraWidget, renderer, frame);
 
             AVFrame* rawCameraFrame = codec->VideoEncodeInFrame;
             rawCameraFrame->width = frame->w;
@@ -432,20 +445,20 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     if (state->next_frame_ready) {
-        // SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
-        SDL_UpdateTexture(texture2, NULL, pxls, 640);
+        picture_widget_update_pixels(remoteCameraWidget, renderer, pxls, 640);
         state->next_frame_ready = 0;
     }
 
 
-    //Nuklear
+//Nuklear
+
     // Создать UI окно
-    if (nk_begin(nk_ctx, "Settings", nk_rect(10, 10, 400, 300),
+    if (nk_begin(nk_ctx, "Настройки", nk_rect(10, 10, 400, 300),
                  NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE)) {
 
         // Текстовое поле для IP-адреса
         nk_layout_row_dynamic(nk_ctx, 30, 1);
-        nk_label(nk_ctx, "Server IP:", NK_TEXT_LEFT);
+        nk_label(nk_ctx, "IP сервера:", NK_TEXT_LEFT);
 
         static char ip_buffer[64];
         nk_edit_string_zero_terminated(nk_ctx, NK_EDIT_FIELD,
@@ -458,12 +471,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         // Поле для порта
         nk_layout_row_dynamic(nk_ctx, 30, 1);
-        nk_label(nk_ctx, "Port:", NK_TEXT_LEFT);
-        nk_property_int(nk_ctx, "#Port:", 1024, &server_port, 65535, 1, 1);
+        nk_label(nk_ctx, "Порт:", NK_TEXT_LEFT);
+        nk_property_int(nk_ctx, "#", 1024, &server_port, 65535, 1, 1);
 
         // Кнопка подключения
         nk_layout_row_dynamic(nk_ctx, 40, 1);
-        if (nk_button_label(nk_ctx, "Connect")) {
+        if (nk_button_label(nk_ctx, "Подключиться")) {
             // Логика подключения
             requestConnectionIdx(serverAddr);
         }
@@ -474,11 +487,11 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         // Чекбокс для камеры
         nk_layout_row_dynamic(nk_ctx, 30, 1);
-        nk_checkbox_label(nk_ctx, "Camera", &state->camera_on);
+        nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
 
         // Чекбокс для микрофона
         nk_layout_row_dynamic(nk_ctx, 30, 1);
-        nk_checkbox_label(nk_ctx, "Microphone", &state->mic_on);
+        nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
     }
     nk_end(nk_ctx);
 
@@ -490,16 +503,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     SDL_RenderClear(renderer);
     nk_sdl_render(nk_ctx, NK_ANTI_ALIASING_ON);
 
-    // SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
+    // Отрисовка виджетов с видеокадрами
     if (state->camera_on) {
-        if (texture) {  /* draw the latest camera frame, if available. */
-            SDL_RenderTextureRotated(renderer, texture, NULL, targetRect, 0, NULL, SDL_FLIP_HORIZONTAL);
-            // SDL_RenderTexture(renderer, texture, NULL, targetRect);
-        }
-        if (texture2) {  /* draw the latest camera frame, if available. */
-            SDL_RenderTextureRotated(renderer, texture2, NULL, targetRect2, 0, NULL, SDL_FLIP_HORIZONTAL);
-            // SDL_RenderTexture(renderer, texture2, NULL, targetRect2);
-        }
+        picture_widget_render(localCameraWidget, renderer);
+        picture_widget_render(remoteCameraWidget, renderer);
     }
     SDL_RenderPresent(renderer);
 
@@ -521,9 +528,13 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
         nk_ctx = NULL;
     }
 
+    // Уничтожение виджетов
+    picture_widget_destroy(localCameraWidget);
+    picture_widget_destroy(remoteCameraWidget);
+
     SDL_CloseCamera(camera);
-    SDL_DestroyTexture(texture);
     SDL_CloseAudioDevice(recDeviceID);
+    free(pxls);
     SDL_Quit();
     FreeCodec(codec);
     /* SDL will clean up the window/renderer for us. */

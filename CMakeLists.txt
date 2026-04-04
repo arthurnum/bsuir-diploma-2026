@@ -10,6 +10,7 @@ target_sources(Client
     codec.c
     device.c
     shared/net.c
+    picture_widget.c
 )
 
 # Nuklear (single-header, no linking needed)
@@ -33,4 +34,11 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 )
 
 target_link_libraries(Client PRIVATE SDL3::SDL3 PkgConfig::LIBAV)
+
+# Копирование шрифта в директорию сборки
+add_custom_command(TARGET Client POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_SOURCE_DIR}/NotoSans-Regular.ttf
+    $<TARGET_FILE_DIR:Client>/NotoSans-Regular.ttf
+)
 
