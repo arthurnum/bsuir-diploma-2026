@@ -14,6 +14,25 @@
 #include "client_state.h"
 #include "codec.h"
 
+// Nuklear
+#define NK_INCLUDE_COMMAND_USERDATA
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_IMPLEMENTATION
+#include "nuklear.h"
+
+#define NK_SDL3_RENDERER_IMPLEMENTATION
+#include "nuklear_sdl3_renderer.h"
+
+// Nuklear
+static struct nk_context *nk_ctx = NULL;
+static struct nk_font_atlas *nk_atlas = NULL;
+
+// UI состояние
+static char server_ip[64] = "127.0.0.1";
+static int server_port = 44323;
+
 /* We will use this renderer to draw into this window every frame. */
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -248,11 +267,33 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
+    // Инициализация Nuklear
+    struct nk_allocator allocator = nk_sdl_allocator();
+    nk_ctx = nk_sdl_init(window, renderer, allocator);
+
+    // Настройка шрифта (baked font для отображения чекбоксов и других символов)
+    nk_atlas = nk_sdl_font_stash_begin(nk_ctx);
+
+    // Добавляем дефолтный шрифт (ProggyClean.ttf встроен в Nuklear)
+    struct nk_font_config config = nk_font_config(0);
+    struct nk_font *font = nk_font_atlas_add_default(nk_atlas, 14, &config);
+
+    nk_sdl_font_stash_end(nk_ctx);
+
+    // Устанавливаем шрифт
+    nk_style_set_font(nk_ctx, &font->handle);
+
+    // Начать обработку ввода первого кадра
+    nk_input_begin(nk_ctx);
+
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     ClientState* state = appstate;
+
+    // Передать событие в Nuklear
+    nk_sdl_handle_event(nk_ctx, event);
 
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
@@ -291,6 +332,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     int err;
     ClientState* state = appstate;
     Uint64 timestampNS = 0;
+
+    // Завершить обработку ввода предыдущего кадра
+    nk_input_end(nk_ctx);
 
     if (isCameraReady && state->camera_on) {
         SDL_Surface *frameAc = SDL_AcquireCameraFrame(camera, &timestampNS);
@@ -387,32 +431,66 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         av_packet_free(&audioPkt);
     }
 
-    // struct pollfd fd;
-    // int ret;
-    // fd.fd = udpClient;
-    // fd.events = POLLIN;
-    // ret = poll(&fd, 1, 20); // timeout
-    // SDL_Log("POLL socket: %d", ret);
-    // switch (ret) {
-    //     case -1:
-    //         // Error
-    //         break;
-    //     case 0:
-    //         // Timeout
-    //         break;
-    //     default:
-    //         recv_packet(udpClient, NULL);
-    //         break;
-    // }
-
     if (state->next_frame_ready) {
         // SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
         SDL_UpdateTexture(texture2, NULL, pxls, 640);
         state->next_frame_ready = 0;
     }
 
+
+    //Nuklear
+    // Создать UI окно
+    if (nk_begin(nk_ctx, "Settings", nk_rect(10, 10, 400, 300),
+                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE)) {
+
+        // Текстовое поле для IP-адреса
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        nk_label(nk_ctx, "Server IP:", NK_TEXT_LEFT);
+
+        static char ip_buffer[64];
+        nk_edit_string_zero_terminated(nk_ctx, NK_EDIT_FIELD,
+                                       ip_buffer, sizeof(ip_buffer), NULL);
+
+        // Обновить server_ip при изменении
+        if (ip_buffer[0] != '\0') {
+            strncpy(server_ip, ip_buffer, sizeof(server_ip));
+        }
+
+        // Поле для порта
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        nk_label(nk_ctx, "Port:", NK_TEXT_LEFT);
+        nk_property_int(nk_ctx, "#Port:", 1024, &server_port, 65535, 1, 1);
+
+        // Кнопка подключения
+        nk_layout_row_dynamic(nk_ctx, 40, 1);
+        if (nk_button_label(nk_ctx, "Connect")) {
+            // Логика подключения
+            requestConnectionIdx(serverAddr);
+        }
+
+        // Разделитель
+        nk_layout_row_dynamic(nk_ctx, 5, 1);
+        nk_spacer(nk_ctx);
+
+        // Чекбокс для камеры
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        nk_checkbox_label(nk_ctx, "Camera", &state->camera_on);
+
+        // Чекбокс для микрофона
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        nk_checkbox_label(nk_ctx, "Microphone", &state->mic_on);
+    }
+    nk_end(nk_ctx);
+
+    // Обновить состояние текстового ввода
+    nk_sdl_update_TextInput(nk_ctx);
+
+    // Рендеринг Nuklear
     SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
+    nk_sdl_render(nk_ctx, NK_ANTI_ALIASING_ON);
+
+    // SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
     if (state->camera_on) {
         if (texture) {  /* draw the latest camera frame, if available. */
             SDL_RenderTextureRotated(renderer, texture, NULL, targetRect, 0, NULL, SDL_FLIP_HORIZONTAL);
@@ -425,10 +503,24 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
     SDL_RenderPresent(renderer);
 
+    // Начать обработку ввода следующего кадра
+    nk_input_begin(nk_ctx);
+
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+    // Завершить обработку ввода последнего кадра
+    if (nk_ctx) {
+        nk_input_end(nk_ctx);
+    }
+
+    // Очистка Nuklear
+    if (nk_ctx) {
+        nk_sdl_shutdown(nk_ctx);
+        nk_ctx = NULL;
+    }
+
     SDL_CloseCamera(camera);
     SDL_DestroyTexture(texture);
     SDL_CloseAudioDevice(recDeviceID);

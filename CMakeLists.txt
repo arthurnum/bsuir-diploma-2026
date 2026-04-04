@@ -12,6 +12,13 @@ target_sources(Client
     shared/net.c
 )
 
+# Nuklear (single-header, no linking needed)
+target_sources(Client
+  PRIVATE
+    nuklear.h
+    nuklear_sdl3_renderer.h
+)
+
 find_package(SDL3 REQUIRED)
 
 find_package(PkgConfig REQUIRED)
