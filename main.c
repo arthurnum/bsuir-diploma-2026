@@ -31,6 +31,7 @@ static struct nk_font_atlas *nk_atlas = NULL;
 
 // UI состояние
 static char server_ip[64] = "127.0.0.1";
+static char server_ip_buffer[64] = "127.0.0.1";
 static int server_port = 44323;
 
 /* We will use this renderer to draw into this window every frame. */
@@ -204,9 +205,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     // Создание виджетов для отображения видеокадров
     // Локальная камера: текстура 640x360, на экране 360x200 (масштабирование)
+    // Позиция (0, 320) - ниже окна Nuklear (окно в позиции y=10, height=300)
     localCameraWidget = picture_widget_create(370, 0, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
     // Удалённая камера: текстура 640x360, на экране 360x200 (масштабирование)
-    remoteCameraWidget = picture_widget_create(370, 220, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
+    // Позиция (370, 320) - ниже окна Nuklear
+    remoteCameraWidget = picture_widget_create(370, 320, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
 
     if (!localCameraWidget || !remoteCameraWidget) {
         SDL_Log("Failed to create picture widgets");
@@ -265,9 +268,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
-// Инициализация Nuklear
+    // Инициализация Nuklear
     struct nk_allocator allocator = nk_sdl_allocator();
     nk_ctx = nk_sdl_init(window, renderer, allocator);
+    nk_ctx->style.text.color = nk_rgb(240, 240, 240);
+    nk_ctx->style.button.text_normal = nk_rgb(240, 240, 240);
+    nk_ctx->style.button.text_hover = nk_rgb(250, 250, 250);
 
     // Настройка шрифта с кириллицей (Noto Sans)
     nk_atlas = nk_sdl_font_stash_begin(nk_ctx);
@@ -278,16 +284,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     struct nk_font *font = nk_font_atlas_add_from_file(
         nk_atlas,
         "NotoSans-Regular.ttf",  // Путь к файлу шрифта
-        16,                       // Размер шрифта
+        14,                       // Размер шрифта
         &config
     );
-
-    if (!font) {
-        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Не удалось загрузить шрифт NotoSans-Regular.ttf");
-        // Можно использовать fallback на дефолтный шрифт
-        font = nk_font_atlas_add_default(nk_atlas, 14, &config);
-    }
-
     nk_sdl_font_stash_end(nk_ctx);
 
     // Проверка успешности загрузки шрифта
@@ -449,24 +448,31 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         state->next_frame_ready = 0;
     }
 
+    // Рендеринг: очистка экрана
+    SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
+    SDL_RenderClear(renderer);
 
-//Nuklear
+    // Отрисовка видео-виджетов (задний план)
+    if (state->camera_on) {
+        picture_widget_render(localCameraWidget, renderer);
+        picture_widget_render(remoteCameraWidget, renderer);
+    }
 
+    // Nuklear UI (передний план)
     // Создать UI окно
     if (nk_begin(nk_ctx, "Настройки", nk_rect(10, 10, 400, 300),
-                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE)) {
+                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_SCALABLE)) {
 
         // Текстовое поле для IP-адреса
         nk_layout_row_dynamic(nk_ctx, 30, 1);
         nk_label(nk_ctx, "IP сервера:", NK_TEXT_LEFT);
 
-        static char ip_buffer[64];
         nk_edit_string_zero_terminated(nk_ctx, NK_EDIT_FIELD,
-                                       ip_buffer, sizeof(ip_buffer), NULL);
+                                       server_ip_buffer, sizeof(server_ip_buffer), NULL);
 
         // Обновить server_ip при изменении
-        if (ip_buffer[0] != '\0') {
-            strncpy(server_ip, ip_buffer, sizeof(server_ip));
+        if (server_ip_buffer[0] != '\0') {
+            strncpy(server_ip, server_ip_buffer, sizeof(server_ip));
         }
 
         // Поле для порта
@@ -498,16 +504,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     // Обновить состояние текстового ввода
     nk_sdl_update_TextInput(nk_ctx);
 
-    // Рендеринг Nuklear
-    SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
-    SDL_RenderClear(renderer);
     nk_sdl_render(nk_ctx, NK_ANTI_ALIASING_ON);
 
-    // Отрисовка виджетов с видеокадрами
-    if (state->camera_on) {
-        picture_widget_render(localCameraWidget, renderer);
-        picture_widget_render(remoteCameraWidget, renderer);
-    }
     SDL_RenderPresent(renderer);
 
     // Начать обработку ввода следующего кадра
