@@ -10,4 +10,6 @@
 
 #define FRAME_FLAG_EOF 1
 
+#define PROTOCOL_NEW_CONNECTION_SIZE 65
+
 #endif

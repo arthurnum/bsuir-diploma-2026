@@ -66,7 +66,8 @@ int main() {
                 conn->meta_str = describe_address(a);
                 conn->addr = calloc(1, sizeof(net_sock_addr));
                 memcpy(conn->addr, a, sizeof(net_sock_addr));
-                printf("New connection: %s", conn->meta_str);
+                printf("New connection: %s\n", conn->meta_str);
+                printf("\tusername: %s\n", &data[1]);
 
                 bufResponse[0] = PROTOCOL_ASSIGN_CONNECTION_IDX;
                 put_uint16_i(bufResponse,1, idx);

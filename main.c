@@ -34,6 +34,9 @@ static char server_ip[64] = "127.0.0.1";
 static char server_ip_buffer[64] = "127.0.0.1";
 static int server_port = 44323;
 
+#define USERNAME_SIZE 64
+static char username[USERNAME_SIZE] = "";
+
 /* We will use this renderer to draw into this window every frame. */
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -62,8 +65,10 @@ static int connectionIdx = 0;
 static uint32_t frameId = 0;
 
 void requestConnectionIdx(net_sock_addr* addr) {
-    uint8_t data[1] = {PROTOCOL_NEW_CONNECTION};
-    send_to_bin(udpClient, addr, data, 1);
+    uint8_t* data = calloc(PROTOCOL_NEW_CONNECTION_SIZE, 1);
+    data[0] = PROTOCOL_NEW_CONNECTION;
+    memcpy(&data[1], username, USERNAME_SIZE);
+    send_to_bin(udpClient, addr, data, PROTOCOL_NEW_CONNECTION_SIZE);
 }
 
 void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
@@ -203,12 +208,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    // Создание виджетов для отображения видеокадров
-    // Локальная камера: текстура 640x360, на экране 360x200 (масштабирование)
-    // Позиция (0, 320) - ниже окна Nuklear (окно в позиции y=10, height=300)
     localCameraWidget = picture_widget_create(370, 0, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
-    // Удалённая камера: текстура 640x360, на экране 360x200 (масштабирование)
-    // Позиция (370, 320) - ниже окна Nuklear
     remoteCameraWidget = picture_widget_create(370, 320, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
 
     if (!localCameraWidget || !remoteCameraWidget) {
@@ -223,14 +223,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     udpClient = make_client();
     serverAddr = address_with_port("127.0.0.1", 44323);
     // serverAddr = address_with_port("46.243.183.18", 44323);
-    requestConnectionIdx(serverAddr);
-    uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
-    recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
-    connectionIdx = get_uint16_i(readBuf, 1);
-    printf("OPT code: %d\n", readBuf[0]);
+
+    // requestConnectionIdx(serverAddr);
+    // uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
+    // recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
+    // connectionIdx = get_uint16_i(readBuf, 1);
+    // printf("OPT code: %d\n", readBuf[0]);
     // printf("Connection Idx: %d\n", *(uint16_t*)(&readBuf[1]));
-    printf("Connection Idx: %d\n", connectionIdx);
-    printf("Meta string: %s\n", &readBuf[3]);
+    // printf("Connection Idx: %d\n", connectionIdx);
+    // printf("Meta string: %s\n", &readBuf[3]);
 
     SDL_AudioDeviceID* recAudioDevices = SDL_GetAudioRecordingDevices(NULL);
     if (!recAudioDevices) {
@@ -265,6 +266,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     *appstate = (ClientState*)malloc(sizeof(ClientState));
     ((ClientState*)(*appstate))->camera_on = 1;
+    ((ClientState*)(*appstate))->show_settings = 0;
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
@@ -272,6 +274,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     struct nk_allocator allocator = nk_sdl_allocator();
     nk_ctx = nk_sdl_init(window, renderer, allocator);
     nk_ctx->style.text.color = nk_rgb(240, 240, 240);
+    nk_ctx->style.edit.text_active = nk_rgb(240, 240, 240);
+    nk_ctx->style.edit.text_normal = nk_rgb(240, 240, 240);
+    nk_ctx->style.edit.text_hover = nk_rgb(240, 240, 240);
     nk_ctx->style.button.text_normal = nk_rgb(240, 240, 240);
     nk_ctx->style.button.text_hover = nk_rgb(250, 250, 250);
 
@@ -284,7 +289,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     struct nk_font *font = nk_font_atlas_add_from_file(
         nk_atlas,
         "NotoSans-Regular.ttf",  // Путь к файлу шрифта
-        14,                       // Размер шрифта
+        16,                       // Размер шрифта
         &config
     );
     nk_sdl_font_stash_end(nk_ctx);
@@ -294,7 +299,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Не удалось загрузить шрифт NotoSans-Regular.ttf");
         // Fallback на дефолтный шрифт
         nk_atlas = nk_sdl_font_stash_begin(nk_ctx);
-        font = nk_font_atlas_add_default(nk_atlas, 14, &config);
+        font = nk_font_atlas_add_default(nk_atlas, 16, &config);
         nk_sdl_font_stash_end(nk_ctx);
     }
 
@@ -396,7 +401,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
             EncodeVideo(codec);
             AVPacket* avp = av_packet_clone(codec->VideoEncodeOutPacket);
-            if (avp && avp->pts >= 0) {
+            if (state->on_call && avp && avp->pts >= 0) {
                 sendFramePacket(serverAddr, avp);
             }
             av_packet_free(&avp);
@@ -437,7 +442,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         EncodeAudio(codec);
         AVPacket* audioPkt = av_packet_clone(codec->AudioEncodeOutPacket);
-        if (audioPkt) {
+        if (state->on_call && audioPkt) {
             sendAudioFramePacket(serverAddr, audioPkt);
         }
         av_packet_free(&audioPkt);
@@ -459,9 +464,17 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // Nuklear UI (передний план)
-    // Создать UI окно
-    if (nk_begin(nk_ctx, "Настройки", nk_rect(10, 10, 400, 300),
-                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_SCALABLE)) {
+    if (!state->show_settings && nk_begin(nk_ctx, "SettingsMenu", nk_rect(0, 0, 100, 35),
+                 NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+        nk_layout_row_dynamic(nk_ctx, 25, 1);
+        if (nk_button_label(nk_ctx, "Настройки")) {
+            state->show_settings = 1;
+        }
+        nk_end(nk_ctx);
+    }
+    // Создать Setting UI окно
+    if (state->show_settings && nk_begin(nk_ctx, "Настройки", nk_rect(5, 5, 190, 380),
+                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
 
         // Текстовое поле для IP-адреса
         nk_layout_row_dynamic(nk_ctx, 30, 1);
@@ -480,26 +493,40 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         nk_label(nk_ctx, "Порт:", NK_TEXT_LEFT);
         nk_property_int(nk_ctx, "#", 1024, &server_port, 65535, 1, 1);
 
-        // Кнопка подключения
-        nk_layout_row_dynamic(nk_ctx, 40, 1);
-        if (nk_button_label(nk_ctx, "Подключиться")) {
-            // Логика подключения
-            requestConnectionIdx(serverAddr);
+        nk_label(nk_ctx, "Имя пользователя:", NK_TEXT_LEFT);
+        nk_edit_string_zero_terminated(nk_ctx, NK_EDIT_FIELD, username, sizeof(username), NULL);
+
+        if (state->username_invalid) {
+            nk_label(nk_ctx, "Введите имя пользователя.", NK_TEXT_LEFT);
+        } else {
+            // Разделитель
+            nk_layout_row_dynamic(nk_ctx, 20, 1);
+            nk_spacer(nk_ctx);
         }
 
-        // Разделитель
-        nk_layout_row_dynamic(nk_ctx, 5, 1);
-        nk_spacer(nk_ctx);
+        // Кнопка подключения
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        if (nk_button_label(nk_ctx, "Подключиться")) {
+            if (strlen(username) < 1) {
+                state->username_invalid = 1;
+            } else {
+                state->username_invalid = 0;
+                // state->show_settings = 0;
+                // Логика подключения
+                requestConnectionIdx(serverAddr);
+            }
+
+        }
 
         // Чекбокс для камеры
-        nk_layout_row_dynamic(nk_ctx, 30, 1);
-        nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
+        // nk_layout_row_dynamic(nk_ctx, 30, 1);
+        // nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
 
         // Чекбокс для микрофона
-        nk_layout_row_dynamic(nk_ctx, 30, 1);
-        nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
+        // nk_layout_row_dynamic(nk_ctx, 30, 1);
+        // nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
+        nk_end(nk_ctx);
     }
-    nk_end(nk_ctx);
 
     // Обновить состояние текстового ввода
     nk_sdl_update_TextInput(nk_ctx);
