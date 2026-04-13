@@ -34,7 +34,6 @@ static char server_ip[64] = "127.0.0.1";
 static char server_ip_buffer[64] = "127.0.0.1";
 static int server_port = 44323;
 
-#define USERNAME_SIZE 64
 static char username[USERNAME_SIZE] = "";
 
 /* We will use this renderer to draw into this window every frame. */
@@ -172,6 +171,20 @@ void handleNetData(ClientState *state) {
             SDL_PutAudioStreamData(playStream, decodedAudioFrame->buf[0]->data, 3840);
         }
         av_frame_free(&decodedAudioFrame);
+    }
+
+    if (resData[0] == PROTOCOL_USER_LIST) {
+        SDL_Log("User list received.");
+        SDL_Log("List size: %d", get_uint16_i(resData, 1));
+        uint16_t offset = get_uint16_i(resData, 3);
+        uint16_t count = get_uint16_i(resData, 5);
+        uint8_t* listEntityPtr = &resData[7];
+        for (int i = 0; i < count; i++) {
+            SDL_Log("[%d] %s",
+                get_uint16_i(listEntityPtr, i * USERNAME_ENTRY_SIZE),
+                &listEntityPtr[i * USERNAME_ENTRY_SIZE + 2]
+            );
+        }
     }
 }
 

@@ -6,6 +6,7 @@
 #include "../shared/net.h"
 
 typedef struct SConnection {
+    char* username;
     char* meta_str;
     net_sock_addr* addr;
 } SConnection;

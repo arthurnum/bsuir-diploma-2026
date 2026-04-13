@@ -37,6 +37,55 @@ void retransmitAudioFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* 
     }
 }
 
+void sendUserList(SConnectionMap* connMap, uint8_t idx) {
+    // [0] OPT code [8bit]
+    // [1] list size [16bit]
+    // [3] offset [16bit]
+    // [5] count [16bit]
+    // [7] data
+    uint8_t* data = calloc(1, READ_BUFFER_SIZE);
+    data[0] = PROTOCOL_USER_LIST;
+    put_uint16_i(data, 1, connMap->size);
+
+    uint8_t* listBuf;
+    uint16_t count = 0;
+    uint16_t i = 0;
+    while (i < connMap->size) {
+        put_uint16_i(data, 3, i); // offset
+
+        if (i + 10 < connMap->size) {
+            put_uint16_i(data, 5, 10); // count
+            listBuf = calloc(1, 10 * USERNAME_ENTRY_SIZE);
+
+            for (int j = 0; j < 10; j++) {
+                put_uint16_i(listBuf, j * USERNAME_ENTRY_SIZE, i + j);
+                memcpy(&listBuf[j * USERNAME_ENTRY_SIZE + 2], connMap->entries[i + j].username, USERNAME_SIZE);
+            }
+            i += 10;
+
+            memcpy(&data[7], listBuf, 10 * USERNAME_ENTRY_SIZE);
+            free(listBuf);
+            send_to_bin(server, connMap->entries[idx].addr, data, READ_BUFFER_SIZE);
+        } else {
+            count = connMap->size - i;
+            put_uint16_i(data, 5, count); // count
+            listBuf = calloc(1, count * USERNAME_ENTRY_SIZE);
+
+            for (int j = 0; j < count; j++) {
+                put_uint16_i(listBuf, j * USERNAME_ENTRY_SIZE, i + j);
+                memcpy(&listBuf[j * USERNAME_ENTRY_SIZE + 2], connMap->entries[i + j].username, USERNAME_SIZE);
+            }
+            i += count;
+
+            memcpy(&data[7], listBuf, count * USERNAME_ENTRY_SIZE);
+            free(listBuf);
+            send_to_bin(server, connMap->entries[idx].addr, data, READ_BUFFER_SIZE);
+        }
+    }
+
+    free(data);
+}
+
 
 int main() {
     int size;
@@ -63,6 +112,8 @@ int main() {
             case PROTOCOL_NEW_CONNECTION:
                 idx = map_new_entry(connMap);
                 conn = &connMap->entries[idx];
+                conn->username = calloc(USERNAME_SIZE, 1);
+                memcpy(conn->username, &data[1], USERNAME_SIZE);
                 conn->meta_str = describe_address(a);
                 conn->addr = calloc(1, sizeof(net_sock_addr));
                 memcpy(conn->addr, a, sizeof(net_sock_addr));
@@ -73,6 +124,12 @@ int main() {
                 put_uint16_i(bufResponse,1, idx);
                 memcpy(&bufResponse[3], conn->meta_str, 32);
                 send_to_bin(server, conn->addr, bufResponse, 64);
+
+                for (int i = 0; i < connMap->size; i++) {
+                    printf("Send user list to %s\n", connMap->entries[i].meta_str);
+                    sendUserList(connMap, i);
+                }
+
                 break;
 
             case PROTOCOL_FRAME:
