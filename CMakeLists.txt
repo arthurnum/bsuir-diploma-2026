@@ -11,6 +11,7 @@ target_sources(Client
     device.c
     shared/net.c
     picture_widget.c
+    user_list.c
 )
 
 # Nuklear (single-header, no linking needed)

@@ -12,6 +12,7 @@
 #include "client_state.h"
 #include "codec.h"
 #include "picture_widget.h"
+#include "user_list.h"
 
 // Nuklear
 #define NK_INCLUDE_COMMAND_USERDATA
@@ -174,16 +175,35 @@ void handleNetData(ClientState *state) {
     }
 
     if (resData[0] == PROTOCOL_USER_LIST) {
-        SDL_Log("User list received.");
-        SDL_Log("List size: %d", get_uint16_i(resData, 1));
+        uint16_t size = get_uint16_i(resData, 1);
         uint16_t offset = get_uint16_i(resData, 3);
         uint16_t count = get_uint16_i(resData, 5);
+        SDL_Log("User list received.");
+        SDL_Log("List size: %d", size);
+
+        if (!state->users) {
+            state->users = user_list_init(size);
+        } else if (state->users->size < size) {
+            user_list_free(state->users);
+            state->users = user_list_init(size);
+        }
+
         uint8_t* listEntityPtr = &resData[7];
+        uint16_t id = 0;
         for (int i = 0; i < count; i++) {
-            SDL_Log("[%d] %s",
-                get_uint16_i(listEntityPtr, i * USERNAME_ENTRY_SIZE),
-                &listEntityPtr[i * USERNAME_ENTRY_SIZE + 2]
-            );
+            id = get_uint16_i(listEntityPtr, i * USERNAME_ENTRY_SIZE);
+            if (!state->users->username[id]) {
+                state->users->username[id] = calloc(USERNAME_SIZE, 1);
+            }
+            memcpy(state->users->username[id], &listEntityPtr[i * USERNAME_ENTRY_SIZE + 2], USERNAME_SIZE);
+        }
+
+        for (int i = 0; i < state->users->size; i++) {
+            if (state->users->username[i]) {
+                SDL_Log("User [%d] : %s", i, state->users->username[i]);
+            } else {
+                SDL_Log("User [%d] : NULL", i);
+            }
         }
     }
 }

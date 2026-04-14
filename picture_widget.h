@@ -1,5 +1,5 @@
-#ifndef PICTURE_WIDGET_H
-#define PICTURE_WIDGET_H
+#ifndef __DIPLOMA_PICTURE_WIDGET_H
+#define __DIPLOMA_PICTURE_WIDGET_H
 
 #include <SDL3/SDL.h>
 
