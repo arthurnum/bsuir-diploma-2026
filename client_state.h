@@ -8,6 +8,7 @@ typedef struct ClientState {
     char mic_on;
     char next_frame_ready;
     char show_settings;
+    char show_users_list;
     char username_invalid;
     char on_call;
     UserList* users;

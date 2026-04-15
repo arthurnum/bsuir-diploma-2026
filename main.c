@@ -35,6 +35,9 @@ static char server_ip[64] = "127.0.0.1";
 static char server_ip_buffer[64] = "127.0.0.1";
 static int server_port = 44323;
 
+// Список пользователей (для UI)
+static struct nk_list_view user_list_view;
+
 static char username[USERNAME_SIZE] = "";
 
 /* We will use this renderer to draw into this window every frame. */
@@ -299,7 +302,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
     *appstate = (ClientState*)malloc(sizeof(ClientState));
     ((ClientState*)(*appstate))->camera_on = 1;
+    ((ClientState*)(*appstate))->mic_on = 0;
+    ((ClientState*)(*appstate))->next_frame_ready = 0;
     ((ClientState*)(*appstate))->show_settings = 0;
+    ((ClientState*)(*appstate))->show_users_list = 0;
+    ((ClientState*)(*appstate))->username_invalid = 0;
+    ((ClientState*)(*appstate))->on_call = 0;
+    ((ClientState*)(*appstate))->users = NULL;
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
@@ -497,16 +506,19 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // Nuklear UI (передний план)
-    if (!state->show_settings && nk_begin(nk_ctx, "SettingsMenu", nk_rect(0, 0, 100, 35),
+    if (nk_begin(nk_ctx, "SettingsMenu", nk_rect(0, 0, 200, 35),
                  NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
-        nk_layout_row_dynamic(nk_ctx, 25, 1);
+        nk_layout_row_dynamic(nk_ctx, 25, 2);
         if (nk_button_label(nk_ctx, "Настройки")) {
             state->show_settings = 1;
+        }
+        if (nk_button_label(nk_ctx, "Пользователи")) {
+            state->show_users_list = 1;
         }
         nk_end(nk_ctx);
     }
     // Создать Setting UI окно
-    if (state->show_settings && nk_begin(nk_ctx, "Настройки", nk_rect(5, 5, 190, 380),
+    if (state->show_settings && nk_begin(nk_ctx, "Настройки", nk_rect(0, 40, 200, 380),
                  NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
 
         // Текстовое поле для IP-адреса
@@ -551,6 +563,14 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         }
 
+        nk_layout_row_dynamic(nk_ctx, 10, 1);
+        nk_spacer(nk_ctx);
+
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        if (nk_button_label(nk_ctx, "Закрыть")) {
+            state->show_settings = 0;
+        }
+
         // Чекбокс для камеры
         // nk_layout_row_dynamic(nk_ctx, 30, 1);
         // nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
@@ -558,6 +578,42 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         // Чекбокс для микрофона
         // nk_layout_row_dynamic(nk_ctx, 30, 1);
         // nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
+
+        nk_end(nk_ctx);
+    }
+
+    // Отдельное окно списка пользователей
+    if (state->show_users_list && nk_begin(nk_ctx, "Пользователи в сети", nk_rect(100, 40, 250, 370),
+                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
+
+        nk_layout_row_dynamic(nk_ctx, 230, 1);
+
+        if (state->users && state->users->size > 0) {
+            // Список с прокруткой через nk_list_view
+            int list_begin = nk_list_view_begin(nk_ctx, &user_list_view, "##users", NK_WINDOW_BORDER, 30, state->users->size);
+
+            nk_layout_row_dynamic(nk_ctx, 25, 1);
+            for (int i = user_list_view.begin; i < user_list_view.end; i++) {
+                if (state->users->username[i]) {
+                    if (nk_button_label(nk_ctx, state->users->username[i])) {
+                        SDL_Log("Выбран пользователь: %s", state->users->username[i]);
+                    }
+                }
+            }
+            nk_list_view_end(&user_list_view);
+        } else {
+            nk_layout_row_dynamic(nk_ctx, 30, 1);
+            nk_label(nk_ctx, "Нет активных пользователей", NK_TEXT_CENTERED);
+        }
+
+        // Кнопка закрытия окна
+        nk_layout_row_dynamic(nk_ctx, 10, 1);
+        nk_spacer(nk_ctx);
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        if (nk_button_label(nk_ctx, "Закрыть")) {
+            state->show_users_list = 0;
+        }
+
         nk_end(nk_ctx);
     }
 
@@ -584,6 +640,14 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     if (nk_ctx) {
         nk_sdl_shutdown(nk_ctx);
         nk_ctx = NULL;
+    }
+
+    // Очистка списка пользователей
+    if (appstate) {
+        ClientState* state = (ClientState*)appstate;
+        if (state->users) {
+            user_list_free(state->users);
+        }
     }
 
     // Уничтожение виджетов
