@@ -63,7 +63,7 @@ static uint8_t *pxls = NULL;
 
 static int udpClient;
 static net_sock_addr* serverAddr;
-static int connectionIdx = 0;
+static int connectionIdx = -1;
 
 static uint32_t frameId = 0;
 
@@ -72,6 +72,7 @@ void requestConnectionIdx(net_sock_addr* addr) {
     data[0] = PROTOCOL_NEW_CONNECTION;
     memcpy(&data[1], username, USERNAME_SIZE);
     send_to_bin(udpClient, addr, data, PROTOCOL_NEW_CONNECTION_SIZE);
+    free(data);
 }
 
 void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
@@ -130,6 +131,10 @@ void sendAudioFramePacket(net_sock_addr* addr, AVPacket* pkt) {
 
 void handleNetData(ClientState *state) {
     uint8_t* resData = get_read_buffer();
+
+    if (resData[0] == PROTOCOL_ASSIGN_CONNECTION_IDX) {
+        connectionIdx = get_uint16_i(resData, 1);
+    }
 
     if (resData[0] == PROTOCOL_FRAME) {
         AVPacket* packet = codec->VideoDecodeInPacket;
@@ -259,15 +264,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     udpClient = make_client();
     serverAddr = address_with_port("127.0.0.1", 44323);
     // serverAddr = address_with_port("46.243.183.18", 44323);
-
-    // requestConnectionIdx(serverAddr);
-    // uint8_t* readBuf = calloc(1, READ_BUFFER_SIZE);
-    // recv(udpClient, readBuf, READ_BUFFER_SIZE, 0);
-    // connectionIdx = get_uint16_i(readBuf, 1);
-    // printf("OPT code: %d\n", readBuf[0]);
-    // printf("Connection Idx: %d\n", *(uint16_t*)(&readBuf[1]));
-    // printf("Connection Idx: %d\n", connectionIdx);
-    // printf("Meta string: %s\n", &readBuf[3]);
 
     SDL_AudioDeviceID* recAudioDevices = SDL_GetAudioRecordingDevices(NULL);
     if (!recAudioDevices) {
@@ -506,14 +502,17 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // Nuklear UI (передний план)
-    if (nk_begin(nk_ctx, "SettingsMenu", nk_rect(0, 0, 200, 35),
+    if (nk_begin(nk_ctx, "SettingsMenu", nk_rect(0, 0, 320, 35),
                  NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
-        nk_layout_row_dynamic(nk_ctx, 25, 2);
+        nk_layout_row_dynamic(nk_ctx, 25, 3);
         if (nk_button_label(nk_ctx, "Настройки")) {
             state->show_settings = 1;
         }
         if (nk_button_label(nk_ctx, "Пользователи")) {
             state->show_users_list = 1;
+        }
+        if (nk_button_label(nk_ctx, "Выход")) {
+            return SDL_APP_SUCCESS;
         }
         nk_end(nk_ctx);
     }
@@ -556,7 +555,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 state->username_invalid = 1;
             } else {
                 state->username_invalid = 0;
-                // state->show_settings = 0;
                 // Логика подключения
                 requestConnectionIdx(serverAddr);
             }
@@ -595,9 +593,15 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             nk_layout_row_dynamic(nk_ctx, 25, 1);
             for (int i = user_list_view.begin; i < user_list_view.end; i++) {
                 if (state->users->username[i]) {
-                    if (nk_button_label(nk_ctx, state->users->username[i])) {
-                        SDL_Log("Выбран пользователь: %s", state->users->username[i]);
+
+                    if (i == connectionIdx) {
+                        nk_label(nk_ctx, state->users->username[i], NK_TEXT_CENTERED);
+                    } else {
+                        if (nk_button_label(nk_ctx, state->users->username[i])) {
+                            SDL_Log("Выбран пользователь: %s", state->users->username[i]);
+                        }
                     }
+
                 }
             }
             nk_list_view_end(&user_list_view);
