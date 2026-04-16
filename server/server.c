@@ -102,6 +102,7 @@ int main() {
         uint8_t* data = get_read_buffer();
 
         uint16_t idx;
+        uint16_t destIdx;
         uint8_t* bufResponse = calloc(1, 64);
         uint8_t opCode = data[0];
         uint8_t eof = 0;
@@ -129,7 +130,12 @@ int main() {
                     printf("Send user list to %s\n", connMap->entries[i].meta_str);
                     sendUserList(connMap, i);
                 }
+                break;
 
+            case PROTOCOL_CALL_REQUEST:
+                idx = get_uint16_i(data, 1);
+                destIdx = get_uint16_i(data, 3);
+                printf("%s calls %s\n", connMap->entries[idx].username, connMap->entries[destIdx].username);
                 break;
 
             case PROTOCOL_FRAME:

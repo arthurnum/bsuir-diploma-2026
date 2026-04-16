@@ -75,6 +75,18 @@ void requestConnectionIdx(net_sock_addr* addr) {
     free(data);
 }
 
+void sendCallRequest(net_sock_addr* addr, uint16_t connDestIdx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] connection dest idx [16bit]
+    uint8_t* data = calloc(PROTOCOL_CALL_REQUEST_SIZE, 1);
+    data[0] = PROTOCOL_CALL_REQUEST;
+    put_uint16_i(data, 1, (uint16_t)connectionIdx);
+    put_uint16_i(data, 3, (uint16_t)connDestIdx);
+    send_to_bin(udpClient, addr, data, PROTOCOL_CALL_REQUEST_SIZE);
+    free(data);
+}
+
 void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
@@ -598,7 +610,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                         nk_label(nk_ctx, state->users->username[i], NK_TEXT_CENTERED);
                     } else {
                         if (nk_button_label(nk_ctx, state->users->username[i])) {
-                            SDL_Log("Выбран пользователь: %s", state->users->username[i]);
+                            sendCallRequest(serverAddr, i);
                         }
                     }
 
