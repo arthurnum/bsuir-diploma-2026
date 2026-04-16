@@ -136,6 +136,7 @@ int main() {
                 idx = get_uint16_i(data, 1);
                 destIdx = get_uint16_i(data, 3);
                 printf("%s calls %s\n", connMap->entries[idx].username, connMap->entries[destIdx].username);
+                send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_NEW_CONNECTION_SIZE);
                 break;
 
             case PROTOCOL_FRAME:
@@ -146,10 +147,9 @@ int main() {
             case PROTOCOL_FRAME_AUDIO:
                 idx = get_uint16_i(data, 1);
                 retransmitAudioFramePacket(connMap, idx, data);
-                // send_to_bin(server, a, data, size);
                 break;
 
-                default:
+            default:
                 break;
         }
 

@@ -148,6 +148,12 @@ void handleNetData(ClientState *state) {
         connectionIdx = get_uint16_i(resData, 1);
     }
 
+    if (resData[0] == PROTOCOL_CALL_REQUEST) {
+        uint16_t callerIdx = get_uint16_i(resData, 1);
+        state->incoming_call = 1;
+        state->caller_idx = callerIdx;
+    }
+
     if (resData[0] == PROTOCOL_FRAME) {
         AVPacket* packet = codec->VideoDecodeInPacket;
         av_packet_make_writable(packet);

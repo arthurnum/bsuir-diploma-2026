@@ -10,7 +10,11 @@ typedef struct ClientState {
     char show_settings;
     char show_users_list;
     char username_invalid;
+
+    char incoming_call;
     char on_call;
+
+    uint16_t caller_idx;
     UserList* users;
 } ClientState;
 

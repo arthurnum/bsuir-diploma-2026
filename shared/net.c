@@ -72,7 +72,7 @@ int recv_packet_dontwait_peek(int socket) {
 
 char* describe_address(net_sock_addr* addr) {
     char* buf = calloc(1, 32);
-    sprintf(buf, "%s:%d\n", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
+    sprintf(buf, "%s:%d", inet_ntop(AF_INET, &addr->sin_addr, buf, 32), ntohs(addr->sin_port));
     return buf;
 }
 
