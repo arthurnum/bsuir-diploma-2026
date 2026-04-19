@@ -10,7 +10,8 @@ target_sources(Client
     codec.c
     device.c
     shared/net.c
-    picture_widget.c
+    widgets/picture_widget.c
+    widgets/nuklear.c
     user_list.c
 )
 

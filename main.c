@@ -10,8 +10,9 @@
 #include "shared/net.h"
 #include "shared/protocol.h"
 #include "client_state.h"
+#include "client_action.h"
 #include "codec.h"
-#include "picture_widget.h"
+#include "widgets/picture_widget.h"
 #include "user_list.h"
 
 // Nuklear
@@ -21,7 +22,7 @@
 #define NK_INCLUDE_DEFAULT_FONT
 #define NK_INCLUDE_STANDARD_IO
 #define NK_IMPLEMENTATION
-#include "nuklear.h"
+#include "widgets/nuklear.h"
 
 #define NK_SDL3_RENDERER_IMPLEMENTATION
 #include "nuklear_sdl3_renderer.h"
@@ -414,6 +415,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     ClientState* state = appstate;
     Uint64 timestampNS = 0;
 
+    SDL_GetWindowSize(window, &state->window_width, &state->window_height);
+
     // Завершить обработку ввода предыдущего кадра
     nk_input_end(nk_ctx);
 
@@ -637,6 +640,20 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         }
 
         nk_end(nk_ctx);
+    }
+
+    // Incoming call widget
+    if (state->incoming_call) {
+        switch (incoming_call_widget(nk_ctx, state)) {
+            case Action_IncomingCallAccept:
+                SDL_Log("Action_IncomingCallAccept");
+                break;
+            case Action_IncomingCallReject:
+                SDL_Log("Action_IncomingCallReject");
+                break;
+            default:
+                break;
+        }
     }
 
     // Обновить состояние текстового ввода

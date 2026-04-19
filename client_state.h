@@ -16,6 +16,9 @@ typedef struct ClientState {
 
     uint16_t caller_idx;
     UserList* users;
+
+    int window_width;
+    int window_height;
 } ClientState;
 
 #endif
