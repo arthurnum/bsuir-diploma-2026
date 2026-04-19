@@ -3,8 +3,9 @@
 
 typedef enum {
     Action_Idle,
+    Action_CallRequest,
     Action_IncomingCallAccept,
-    Action_IncomingCallReject
+    Action_IncomingCallReject,
 } ClientAction;
 
 #endif

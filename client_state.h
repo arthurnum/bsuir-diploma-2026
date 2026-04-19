@@ -14,7 +14,9 @@ typedef struct ClientState {
     char incoming_call;
     char on_call;
 
+    uint16_t connection_idx;
     uint16_t caller_idx;
+    uint16_t callee_idx;
     UserList* users;
 
     int window_width;

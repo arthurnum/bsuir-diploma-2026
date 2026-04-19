@@ -25,48 +25,49 @@ ClientAction incoming_call_widget(struct nk_context *nk_ctx, ClientState *state)
     return result;
 }
 
-ClientAction user_list_widget(struct nk_context *nk_ctx, ClientState *state) {
+ClientAction user_list_widget(struct nk_context *nk_ctx, ClientState *state, struct nk_list_view *user_list_view) {
     ClientAction result = Action_Idle;
 
-    // if (nk_begin(nk_ctx, "Пользователи в сети", nk_rect(100, 40, 250, 370),
-    //              NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
+    if (nk_begin(nk_ctx, "Пользователи в сети", nk_rect(100, 40, 250, 370),
+                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
 
-    //     nk_layout_row_dynamic(nk_ctx, 230, 1);
+        nk_layout_row_dynamic(nk_ctx, 230, 1);
 
-    //     if (state->users && state->users->size > 0) {
-    //         // Список с прокруткой через nk_list_view
-    //         int list_begin = nk_list_view_begin(nk_ctx, &user_list_view, "##users", NK_WINDOW_BORDER, 30, state->users->size);
+        if (state->users && state->users->size > 0) {
+            // Список с прокруткой через nk_list_view
+            int list_begin = nk_list_view_begin(nk_ctx, user_list_view, "##users", NK_WINDOW_BORDER, 30, state->users->size);
 
-    //         nk_layout_row_dynamic(nk_ctx, 25, 1);
-    //         for (int i = user_list_view.begin; i < user_list_view.end; i++) {
-    //             if (state->users->username[i]) {
+            nk_layout_row_dynamic(nk_ctx, 25, 1);
+            for (int i = user_list_view->begin; i < user_list_view->end; i++) {
+                if (state->users->username[i]) {
 
-    //                 if (i == connectionIdx) {
-    //                     nk_label(nk_ctx, state->users->username[i], NK_TEXT_CENTERED);
-    //                 } else {
-    //                     if (nk_button_label(nk_ctx, state->users->username[i])) {
-    //                         sendCallRequest(serverAddr, i);
-    //                     }
-    //                 }
+                    if (i == state->connection_idx) {
+                        nk_label(nk_ctx, state->users->username[i], NK_TEXT_CENTERED);
+                    } else {
+                        if (nk_button_label(nk_ctx, state->users->username[i])) {
+                            state->callee_idx = i;
+                            result = Action_CallRequest;
+                        }
+                    }
 
-    //             }
-    //         }
-    //         nk_list_view_end(&user_list_view);
-    //     } else {
-    //         nk_layout_row_dynamic(nk_ctx, 30, 1);
-    //         nk_label(nk_ctx, "Нет активных пользователей", NK_TEXT_CENTERED);
-    //     }
+                }
+            }
+            nk_list_view_end(user_list_view);
+        } else {
+            nk_layout_row_dynamic(nk_ctx, 30, 1);
+            nk_label(nk_ctx, "Нет активных пользователей", NK_TEXT_CENTERED);
+        }
 
-    //     // Кнопка закрытия окна
-    //     nk_layout_row_dynamic(nk_ctx, 10, 1);
-    //     nk_spacer(nk_ctx);
-    //     nk_layout_row_dynamic(nk_ctx, 30, 1);
-    //     if (nk_button_label(nk_ctx, "Закрыть")) {
-    //         state->show_users_list = 0;
-    //     }
+        // Кнопка закрытия окна
+        nk_layout_row_dynamic(nk_ctx, 10, 1);
+        nk_spacer(nk_ctx);
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        if (nk_button_label(nk_ctx, "Закрыть")) {
+            state->show_users_list = 0;
+        }
 
-    //     nk_end(nk_ctx);
-    // }
+        nk_end(nk_ctx);
+    }
 
     return result;
 }
