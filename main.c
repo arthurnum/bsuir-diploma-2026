@@ -83,8 +83,20 @@ void sendCallRequest(net_sock_addr* addr, uint16_t connDestIdx) {
     uint8_t* data = calloc(PROTOCOL_CALL_REQUEST_SIZE, 1);
     data[0] = PROTOCOL_CALL_REQUEST;
     put_uint16_i(data, 1, (uint16_t)connectionIdx);
-    put_uint16_i(data, 3, (uint16_t)connDestIdx);
+    put_uint16_i(data, 3, connDestIdx);
     send_to_bin(udpClient, addr, data, PROTOCOL_CALL_REQUEST_SIZE);
+    free(data);
+}
+
+void sendCallAccept(net_sock_addr* addr, uint16_t callerIdx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] connection dest idx [16bit]
+    uint8_t* data = calloc(PROTOCOL_CALL_ACCEPT_SIZE, 1);
+    data[0] = PROTOCOL_CALL_ACCEPT;
+    put_uint16_i(data, 1, (uint16_t)connectionIdx);
+    put_uint16_i(data, 3, callerIdx);
+    send_to_bin(udpClient, addr, data, PROTOCOL_CALL_ACCEPT_SIZE);
     free(data);
 }
 
@@ -154,6 +166,11 @@ void handleNetData(ClientState *state) {
         uint16_t callerIdx = get_uint16_i(resData, 1);
         state->incoming_call = 1;
         state->caller_idx = callerIdx;
+    }
+
+    if (resData[0] == PROTOCOL_CALL_ACCEPT) {
+        uint16_t callerIdx = get_uint16_i(resData, 1);
+        state->on_call = 1;
     }
 
     if (resData[0] == PROTOCOL_FRAME) {
@@ -270,7 +287,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
 
     localCameraWidget = picture_widget_create(370, 0, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
-    remoteCameraWidget = picture_widget_create(370, 320, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
+    remoteCameraWidget = picture_widget_create(370, 220, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
 
     if (!localCameraWidget || !remoteCameraWidget) {
         SDL_Log("Failed to create picture widgets");
@@ -324,6 +341,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     ((ClientState*)(*appstate))->show_users_list = 0;
     ((ClientState*)(*appstate))->username_invalid = 0;
     ((ClientState*)(*appstate))->on_call = 0;
+    ((ClientState*)(*appstate))->frame_seq_ready = 0;
     ((ClientState*)(*appstate))->users = NULL;
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
@@ -462,7 +480,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             EncodeVideo(codec);
             AVPacket* avp = av_packet_clone(codec->VideoEncodeOutPacket);
             if (state->on_call && avp && avp->pts >= 0) {
-                sendFramePacket(serverAddr, avp);
+                if (avp->flags & AV_PKT_FLAG_KEY) {
+                    state->frame_seq_ready = 1;
+                }
+                if (state->frame_seq_ready) {
+                    sendFramePacket(serverAddr, avp);
+                }
             }
             av_packet_free(&avp);
 
@@ -577,10 +600,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 state->username_invalid = 1;
             } else {
                 state->username_invalid = 0;
-                // Логика подключения
                 requestConnectionIdx(serverAddr);
             }
-
         }
 
         nk_layout_row_dynamic(nk_ctx, 10, 1);
@@ -617,7 +638,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     if (state->incoming_call) {
         switch (incoming_call_widget(nk_ctx, state)) {
             case Action_IncomingCallAccept:
-                SDL_Log("Action_IncomingCallAccept");
+                sendCallAccept(serverAddr, state->caller_idx);
+                state->incoming_call = 0;
+                state->on_call = 1;
                 break;
             case Action_IncomingCallReject:
                 SDL_Log("Action_IncomingCallReject");

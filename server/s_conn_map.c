@@ -3,10 +3,10 @@
 #include "s_conn_map.h"
 
 SConnectionMap* make_conn_map() {
-    SConnectionMap* map = malloc(sizeof(SConnectionMap));
+    SConnectionMap* map = calloc(1, sizeof(SConnectionMap));
     map->size = 0;
     map->capacity = 16;
-    map->entries = malloc(sizeof(SConnection) * map->capacity);
+    map->entries = calloc(map->capacity, sizeof(SConnection));
     return map;
 }
 

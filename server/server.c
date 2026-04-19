@@ -4,10 +4,11 @@
 #include "../shared/net.h"
 #include "../shared/protocol.h"
 #include "s_conn_map.h"
+#include "session_call.h"
 
 static int server;
 
-void retransmitFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* data) {
+void retransmitFramePacket(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
     // [3] frame size [32bit]
@@ -16,10 +17,12 @@ void retransmitFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* data)
     // [12] chunk number [16bit]
     // [14] frame ID [32bit]
     // [18] data [512B]
-    for (int connIndex = 0; connIndex < connMap->size; connIndex++) {
-        if (connIndex != idx) {
-            send_to_bin(server, connMap->entries[connIndex].addr, data, FRAME_PACKET_SIZE);
-            // printf("Send frame to %s",connMap->entries[connIndex].meta_str);
+    uint16_t sessionId = connMap->entries[idx].session_id;
+    SessionCall* session = &sessionMap->entries[sessionId];
+    for (uint16_t i = 0; i < session->size; i++) {
+        uint16_t connIdx = session->participantsIdx[i];
+        if (connIdx != idx) {
+            send_to_bin(server, connMap->entries[connIdx].addr, data, FRAME_PACKET_SIZE);
         }
     }
 }
@@ -94,6 +97,7 @@ int main() {
     printf("Socket FD %d\n", server);
 
     SConnectionMap* connMap = make_conn_map();
+    SessionMap* sessionMap = make_session_map();
 
     net_sock_addr* a = calloc(1, sizeof(net_sock_addr));
 
@@ -103,6 +107,7 @@ int main() {
 
         uint16_t idx;
         uint16_t destIdx;
+        uint16_t sessionIdx;
         uint8_t* bufResponse = calloc(1, 64);
         uint8_t opCode = data[0];
         uint8_t eof = 0;
@@ -134,14 +139,27 @@ int main() {
 
             case PROTOCOL_CALL_REQUEST:
                 idx = get_uint16_i(data, 1);
-                destIdx = get_uint16_i(data, 3);
+                destIdx = get_uint16_i(data, 3); // callee
                 printf("%s calls %s\n", connMap->entries[idx].username, connMap->entries[destIdx].username);
-                send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_NEW_CONNECTION_SIZE);
+                send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_CALL_REQUEST_SIZE);
+                break;
+
+            case PROTOCOL_CALL_ACCEPT:
+                idx = get_uint16_i(data, 1);
+                destIdx = get_uint16_i(data, 3); // caller
+                printf("%s accept call from %s\n", connMap->entries[idx].username, connMap->entries[destIdx].username);
+                send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_CALL_ACCEPT_SIZE);
+
+                sessionIdx = open_session(sessionMap);
+                addParticipant(&sessionMap->entries[sessionIdx], idx);
+                addParticipant(&sessionMap->entries[sessionIdx], destIdx);
+                connMap->entries[idx].session_id = sessionIdx;
+                connMap->entries[destIdx].session_id = sessionIdx;
                 break;
 
             case PROTOCOL_FRAME:
                 idx = get_uint16_i(data, 1);
-                retransmitFramePacket(connMap, idx, data);
+                retransmitFramePacket(connMap, sessionMap, idx, data);
                 break;
 
             case PROTOCOL_FRAME_AUDIO:

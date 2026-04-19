@@ -7,5 +7,6 @@ target_sources(Server
   PRIVATE
     server.c
     s_conn_map.c
+    session_call.c
     ../shared/net.c
 )

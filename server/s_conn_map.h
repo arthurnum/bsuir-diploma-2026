@@ -9,6 +9,7 @@ typedef struct SConnection {
     char* username;
     char* meta_str;
     net_sock_addr* addr;
+    uint16_t session_id;
 } SConnection;
 
 typedef struct SConnectionMap {
