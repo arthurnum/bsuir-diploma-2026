@@ -112,6 +112,18 @@ void sendCallAccept(net_sock_addr* addr, uint16_t callerIdx) {
     free(data);
 }
 
+void sendCallReject(net_sock_addr* addr, uint16_t callerIdx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] connection dest idx [16bit]
+    uint8_t* data = calloc(PROTOCOL_CALL_REJECT_SIZE, 1);
+    data[0] = PROTOCOL_CALL_REJECT;
+    put_uint16_i(data, 1, (uint16_t)connectionIdx);
+    put_uint16_i(data, 3, callerIdx);
+    send_to_bin(udpClient, addr, data, PROTOCOL_CALL_REJECT_SIZE);
+    free(data);
+}
+
 void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
@@ -189,6 +201,11 @@ void handleNetData(ClientState *state) {
         uint16_t callerIdx = get_uint16_i(resData, 1);
         state->waiting_call_response = 0;
         state->on_call = 1;
+    }
+
+    if (resData[0] == PROTOCOL_CALL_REJECT) {
+        uint16_t callerIdx = get_uint16_i(resData, 1);
+        state->waiting_call_response = 0;
     }
 
     if (resData[0] == PROTOCOL_FRAME) {
@@ -677,7 +694,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 state->on_call = 1;
                 break;
             case Action_IncomingCallReject:
-                SDL_Log("Action_IncomingCallReject");
+                sendCallReject(serverAddr, state->caller_idx);
+                state->incoming_call = 0;
                 break;
             default:
                 break;
