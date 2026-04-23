@@ -88,6 +88,18 @@ void sendCallRequest(net_sock_addr* addr, uint16_t connDestIdx) {
     free(data);
 }
 
+void sendCallCancel(net_sock_addr* addr, uint16_t connDestIdx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    // [3] connection dest idx [16bit]
+    uint8_t* data = calloc(PROTOCOL_CALL_CANCEL_SIZE, 1);
+    data[0] = PROTOCOL_CALL_CANCEL;
+    put_uint16_i(data, 1, (uint16_t)connectionIdx);
+    put_uint16_i(data, 3, connDestIdx);
+    send_to_bin(udpClient, addr, data, PROTOCOL_CALL_CANCEL_SIZE);
+    free(data);
+}
+
 void sendCallAccept(net_sock_addr* addr, uint16_t callerIdx) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
@@ -168,8 +180,14 @@ void handleNetData(ClientState *state) {
         state->caller_idx = callerIdx;
     }
 
+    if (resData[0] == PROTOCOL_CALL_CANCEL) {
+        uint16_t callerIdx = get_uint16_i(resData, 1);
+        state->incoming_call = 0;
+    }
+
     if (resData[0] == PROTOCOL_CALL_ACCEPT) {
         uint16_t callerIdx = get_uint16_i(resData, 1);
+        state->waiting_call_response = 0;
         state->on_call = 1;
     }
 
@@ -334,15 +352,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_ResumeAudioStreamDevice(playStream);
 
     *appstate = (ClientState*)malloc(sizeof(ClientState));
-    ((ClientState*)(*appstate))->camera_on = 1;
-    ((ClientState*)(*appstate))->mic_on = 0;
-    ((ClientState*)(*appstate))->next_frame_ready = 0;
-    ((ClientState*)(*appstate))->show_settings = 0;
-    ((ClientState*)(*appstate))->show_users_list = 0;
-    ((ClientState*)(*appstate))->username_invalid = 0;
-    ((ClientState*)(*appstate))->on_call = 0;
-    ((ClientState*)(*appstate))->frame_seq_ready = 0;
-    ((ClientState*)(*appstate))->users = NULL;
+    ClientState* state = *appstate;
+    state->camera_on = 1;
+    state->mic_on = 0;
+    state->next_frame_ready = 0;
+    state->show_settings = 0;
+    state->show_users_list = 0;
+    state->username_invalid = 0;
+    state->waiting_call_response = 0;
+    state->incoming_call = 0;
+    state->on_call = 0;
+    state->frame_seq_ready = 0;
+    state->users = NULL;
+    state = NULL;
 
     netThread = SDL_CreateThread(serverListen, "ServerListen", *appstate);
 
@@ -628,6 +650,18 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         switch (user_list_widget(nk_ctx, state, &user_list_view)) {
             case Action_CallRequest:
                 sendCallRequest(serverAddr, state->callee_idx);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Waiting call response
+    if (state->waiting_call_response) {
+        switch (user_call_widget(nk_ctx, state)) {
+            case Action_CallCancel:
+                sendCallCancel(serverAddr, state->callee_idx);
+                state->waiting_call_response = 0;
                 break;
             default:
                 break;

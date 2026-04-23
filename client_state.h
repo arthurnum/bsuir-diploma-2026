@@ -11,6 +11,7 @@ typedef struct ClientState {
     char show_users_list;
     char username_invalid;
 
+    char waiting_call_response;
     char incoming_call;
     char on_call;
     char frame_seq_ready; // wait till next I-frame

@@ -4,6 +4,7 @@
 typedef enum {
     Action_Idle,
     Action_CallRequest,
+    Action_CallCancel,
     Action_IncomingCallAccept,
     Action_IncomingCallReject,
 } ClientAction;

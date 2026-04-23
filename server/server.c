@@ -144,6 +144,13 @@ int main() {
                 send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_CALL_REQUEST_SIZE);
                 break;
 
+            case PROTOCOL_CALL_CANCEL:
+                idx = get_uint16_i(data, 1);
+                destIdx = get_uint16_i(data, 3); // callee
+                printf("%s cancel call to %s\n", connMap->entries[idx].username, connMap->entries[destIdx].username);
+                send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_CALL_CANCEL_SIZE);
+                break;
+
             case PROTOCOL_CALL_ACCEPT:
                 idx = get_uint16_i(data, 1);
                 destIdx = get_uint16_i(data, 3); // caller
