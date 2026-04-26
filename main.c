@@ -21,6 +21,7 @@
 #define NK_INCLUDE_FONT_BAKING
 #define NK_INCLUDE_DEFAULT_FONT
 #define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_STANDARD_BOOL
 #define NK_IMPLEMENTATION
 #include "widgets/nuklear.h"
 
@@ -200,6 +201,8 @@ void handleNetData(ClientState *state) {
     if (resData[0] == PROTOCOL_CALL_ACCEPT) {
         uint16_t callerIdx = get_uint16_i(resData, 1);
         state->waiting_call_response = 0;
+        state->show_settings = 0;
+        state->show_users_list = 0;
         state->on_call = 1;
     }
 
@@ -317,7 +320,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer("BSUIR Eremeev diploma", 800, 480, 0, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("BSUIR Eremeev diploma", 790, 470, 0, &window, &renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -327,8 +330,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    localCameraWidget = picture_widget_create(370, 0, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
-    remoteCameraWidget = picture_widget_create(370, 220, 360, 200, 640, 360, SDL_PIXELFORMAT_NV12);
+    localCameraWidget = picture_widget_create(370, 36, 384, 216, 640, 360, SDL_PIXELFORMAT_NV12);
+    remoteCameraWidget = picture_widget_create(370, 256, 384, 216, 640, 360, SDL_PIXELFORMAT_NV12);
 
     if (!localCameraWidget || !remoteCameraWidget) {
         SDL_Log("Failed to create picture widgets");
@@ -379,7 +382,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     state->camera_on = 1;
     state->mic_on = 0;
     state->next_frame_ready = 0;
-    state->show_settings = 0;
+    state->show_settings = 1;
     state->show_users_list = 0;
     state->username_invalid = 0;
     state->waiting_call_response = 0;
@@ -453,19 +456,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         {
             case SDL_SCANCODE_ESCAPE:
                 return SDL_APP_SUCCESS;
-            case SDL_SCANCODE_SPACE:
-                state->mic_on = !state->mic_on;
-                state->mic_on ? SDL_ResumeAudioStreamDevice(recStream) : SDL_PauseAudioStreamDevice(recStream) ;
-                break;
-            case SDL_SCANCODE_C:
-                state->camera_on = !state->camera_on;
-                if (state->camera_on) {
-                    camera = device_open_camera();
-                    SDL_Log("Камера включена");
-                } else {
-                    SDL_CloseCamera(camera);
-                    SDL_Log("Камера выключена");
-                }
+            // case SDL_SCANCODE_SPACE:
+            //     state->mic_on = !state->mic_on;
+            //     state->mic_on ? SDL_ResumeAudioStreamDevice(recStream) : SDL_PauseAudioStreamDevice(recStream) ;
+            //     break;
+            // case SDL_SCANCODE_C:
+            //     state->camera_on = !state->camera_on;
+            //     if (state->camera_on) {
+            //         camera = device_open_camera();
+            //         SDL_Log("Камера включена");
+            //     } else {
+            //         SDL_CloseCamera(camera);
+            //         SDL_Log("Камера выключена");
+            //     }
             default:
                 break;
         }
@@ -583,7 +586,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // Рендеринг: очистка экрана
-    SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, 0x16, 0x1C, 0x20, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
     // Отрисовка видео-виджетов (задний план)
@@ -607,6 +610,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         }
         nk_end(nk_ctx);
     }
+
+    media_control_widget(nk_ctx, state);
+
     // Создать Setting UI окно
     if (state->show_settings && nk_begin(nk_ctx, "Настройки", nk_rect(0, 40, 200, 380),
                  NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
@@ -657,14 +663,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         if (nk_button_label(nk_ctx, "Закрыть")) {
             state->show_settings = 0;
         }
-
-        // Чекбокс для камеры
-        // nk_layout_row_dynamic(nk_ctx, 30, 1);
-        // nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
-
-        // Чекбокс для микрофона
-        // nk_layout_row_dynamic(nk_ctx, 30, 1);
-        // nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
 
         nk_end(nk_ctx);
     }

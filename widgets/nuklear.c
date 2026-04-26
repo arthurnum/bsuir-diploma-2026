@@ -116,3 +116,20 @@ ClientAction user_list_widget(struct nk_context *nk_ctx, ClientState *state, str
 
     return result;
 }
+
+ClientAction media_control_widget(struct nk_context *nk_ctx, ClientState *state) {
+    ClientAction result = Action_Idle;
+    if (nk_begin(nk_ctx, "MediaControlWidget", nk_rect(370, 0, 300, 35),
+                 NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+
+        nk_layout_row_dynamic(nk_ctx, 25, 3);
+        // Чекбокс для камеры
+        nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
+
+        // Чекбокс для микрофона
+        nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
+        nk_end(nk_ctx);
+    }
+
+    return result;
+}
