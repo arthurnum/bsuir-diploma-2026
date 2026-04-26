@@ -301,7 +301,7 @@ int SDLCALL serverListen(void* userData) {
     SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_HIGH);
     ClientState* state = (ClientState*)userData;
     while (1) {
-        if (recv_packet_dontwait(udpClient) > 0) {
+        if (recv_packet_connected(udpClient) > 0) {
             handleNetData(state);
         }
     }
@@ -323,6 +323,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     if (!SDL_CreateWindowAndRenderer("BSUIR Eremeev diploma", 790, 470, 0, &window, &renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
+    }
+
+    if (!SDL_SetRenderVSync(renderer, 1)) {
+        SDL_Log("SDL_SetRenderVSync error: %s", SDL_GetError());
     }
 
     camera = device_open_camera();

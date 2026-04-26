@@ -6,14 +6,12 @@ Codec* InitCodec() {
     codec->error_str = calloc(256, 1);
 
     // Video
-    codec->VideoEncoder = avcodec_find_encoder(AV_CODEC_ID_H264);
+    codec->VideoEncoder = avcodec_find_encoder(AV_CODEC_ID_VP8);
     codec->VideoEncoderCtx = avcodec_alloc_context3(codec->VideoEncoder);
     if (!codec->VideoEncoderCtx) {
         strcpy(codec->error_str, "Could not allocate video encoder context");
         return codec;
     }
-    // codec->VideoEncoderCtx->width = 1920;
-    // codec->VideoEncoderCtx->height = 1080;
     codec->VideoEncoderCtx->width = 640;
     codec->VideoEncoderCtx->height = 360;
     codec->VideoEncoderCtx->gop_size = 60;
@@ -24,9 +22,8 @@ Codec* InitCodec() {
     codec->VideoEncoderCtx->bit_rate = 1024 * 1000; // 1MB
     AVDictionary* codecOpts = NULL;
     av_dict_set(&codecOpts, "threads", "1", 0);
-    // av_dict_set(&codecOpts, "preset", "fast", 0);
-    av_dict_set(&codecOpts, "preset", "ultrafast", 0);
-    av_dict_set(&codecOpts, "tune", "zerolatency", 0);
+    av_dict_set(&codecOpts, "deadline", "realtime", 0);
+    av_dict_set(&codecOpts, "speed", "5", 0);
     err = avcodec_open2(codec->VideoEncoderCtx, codec->VideoEncoder, &codecOpts);
     av_dict_free(&codecOpts);
     if (err < 0) {
@@ -34,14 +31,12 @@ Codec* InitCodec() {
         return codec;
     }
 
-    codec->VideoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
+    codec->VideoDecoder = avcodec_find_decoder(AV_CODEC_ID_VP8);
     codec->VideoDecoderCtx = avcodec_alloc_context3(codec->VideoDecoder);
     if (!codec->VideoDecoderCtx) {
         strcpy(codec->error_str, "Could not allocate video decoder context");
         return codec;
     }
-    // codec->VideoDecoderCtx->width = 1920;
-    // codec->VideoDecoderCtx->height = 1080;
     codec->VideoDecoderCtx->width = 640;
     codec->VideoDecoderCtx->height = 360;
     codec->VideoDecoderCtx->pix_fmt = AV_PIX_FMT_YUV420P;

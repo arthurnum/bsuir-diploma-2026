@@ -61,6 +61,15 @@ int recv_packet_dontwait(int socket) {
     return recv(socket, readBuffer, READ_BUFFER_SIZE, MSG_DONTWAIT);
 }
 
+int recv_packet_connected(int socket) {
+    if (!readBuffer) {
+        readBuffer = calloc(1, READ_BUFFER_SIZE);
+    } else {
+        memset(readBuffer, 0, READ_BUFFER_SIZE);
+    }
+    return recv(socket, readBuffer, READ_BUFFER_SIZE, 0);
+}
+
 int recv_packet_dontwait_peek(int socket) {
     if (!readBuffer) {
         readBuffer = calloc(1, READ_BUFFER_SIZE);
