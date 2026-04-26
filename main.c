@@ -21,12 +21,12 @@
 #define NK_INCLUDE_FONT_BAKING
 #define NK_INCLUDE_DEFAULT_FONT
 #define NK_INCLUDE_STANDARD_IO
-#define NK_INCLUDE_STANDARD_BOOL
 #define NK_IMPLEMENTATION
 #include "widgets/nuklear.h"
 
 #define NK_SDL3_RENDERER_IMPLEMENTATION
 #include "nuklear_sdl3_renderer.h"
+#include "style.c"
 
 // Nuklear
 static struct nk_context *nk_ctx = NULL;
@@ -398,12 +398,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     // Инициализация Nuklear
     struct nk_allocator allocator = nk_sdl_allocator();
     nk_ctx = nk_sdl_init(window, renderer, allocator);
-    nk_ctx->style.text.color = nk_rgb(240, 240, 240);
-    nk_ctx->style.edit.text_active = nk_rgb(240, 240, 240);
-    nk_ctx->style.edit.text_normal = nk_rgb(240, 240, 240);
-    nk_ctx->style.edit.text_hover = nk_rgb(240, 240, 240);
-    nk_ctx->style.button.text_normal = nk_rgb(240, 240, 240);
-    nk_ctx->style.button.text_hover = nk_rgb(250, 250, 250);
+
+    set_style(nk_ctx, THEME_DARK);
+    nk_ctx->style.checkbox.border_color = nk_rgb(63, 98, 126);
+    nk_ctx->style.checkbox.border = 1.0f;
+
 
     // Настройка шрифта с кириллицей (Noto Sans)
     nk_atlas = nk_sdl_font_stash_begin(nk_ctx);
@@ -586,7 +585,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // Рендеринг: очистка экрана
-    SDL_SetRenderDrawColor(renderer, 0x16, 0x1C, 0x20, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, 34, 44, 47, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
     // Отрисовка видео-виджетов (задний план)
