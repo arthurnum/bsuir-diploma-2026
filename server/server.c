@@ -127,7 +127,7 @@ int main() {
                 printf("\tusername: %s\n", &data[1]);
 
                 bufResponse[0] = PROTOCOL_ASSIGN_CONNECTION_IDX;
-                put_uint16_i(bufResponse,1, idx);
+                put_uint16_i(bufResponse, 1, idx);
                 memcpy(&bufResponse[3], conn->meta_str, 32);
                 send_to_bin(server, conn->addr, bufResponse, 64);
 
@@ -141,7 +141,13 @@ int main() {
                 idx = get_uint16_i(data, 1);
                 destIdx = get_uint16_i(data, 3); // callee
                 printf("%s calls %s\n", connMap->entries[idx].username, connMap->entries[destIdx].username);
-                send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_CALL_REQUEST_SIZE);
+                if (connMap->entries[destIdx].is_on_call) {
+                    bufResponse[0] = PROTOCOL_USER_BUSY;
+                    put_uint16_i(bufResponse, 1, destIdx);
+                    send_to_bin(server, connMap->entries[idx].addr, bufResponse, PROTOCOL_USER_BUSY_SIZE);
+                } else {
+                    send_to_bin(server, connMap->entries[destIdx].addr, data, PROTOCOL_CALL_REQUEST_SIZE);
+                }
                 break;
 
             case PROTOCOL_CALL_CANCEL:
@@ -168,7 +174,9 @@ int main() {
                 addParticipant(&sessionMap->entries[sessionIdx], idx);
                 addParticipant(&sessionMap->entries[sessionIdx], destIdx);
                 connMap->entries[idx].session_id = sessionIdx;
+                connMap->entries[idx].is_on_call = 1;
                 connMap->entries[destIdx].session_id = sessionIdx;
+                connMap->entries[destIdx].is_on_call = 1;
                 break;
 
             case PROTOCOL_FRAME:

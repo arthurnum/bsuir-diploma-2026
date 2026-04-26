@@ -208,6 +208,12 @@ void handleNetData(ClientState *state) {
         state->waiting_call_response = 0;
     }
 
+    if (resData[0] == PROTOCOL_USER_BUSY) {
+        uint16_t userIdx = get_uint16_i(resData, 1);
+        state->waiting_call_response = 0;
+        state->show_user_busy = 1;
+    }
+
     if (resData[0] == PROTOCOL_FRAME) {
         AVPacket* packet = codec->VideoDecodeInPacket;
         av_packet_make_writable(packet);
@@ -380,6 +386,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     state->incoming_call = 0;
     state->on_call = 0;
     state->frame_seq_ready = 0;
+    state->show_user_busy = 0;
     state->users = NULL;
     state = NULL;
 
@@ -700,6 +707,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             default:
                 break;
         }
+    }
+
+    if (state->show_user_busy) {
+        user_busy_widget(nk_ctx, state);
     }
 
     // Обновить состояние текстового ввода

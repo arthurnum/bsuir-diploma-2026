@@ -10,6 +10,7 @@ typedef struct SConnection {
     char* meta_str;
     net_sock_addr* addr;
     uint16_t session_id;
+    char is_on_call;
 } SConnection;
 
 typedef struct SConnectionMap {

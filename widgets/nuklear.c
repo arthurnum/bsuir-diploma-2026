@@ -47,6 +47,28 @@ ClientAction incoming_call_widget(struct nk_context *nk_ctx, ClientState *state)
     return result;
 }
 
+ClientAction user_busy_widget(struct nk_context *nk_ctx, ClientState *state) {
+    ClientAction result = Action_Idle;
+    const int w = 200;
+    const int h = 130;
+    float x = (state->window_width - w) / 2.0;
+    float y = (state->window_height - h) / 2.0;
+    if (nk_begin(nk_ctx, "Пользователь занят", nk_rect(x, y, w, h),
+                 NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_TITLE | NK_WINDOW_NO_SCROLLBAR)) {
+
+        nk_layout_row_dynamic(nk_ctx, 50, 1);
+        nk_label(nk_ctx, state->users->username[state->callee_idx], NK_TEXT_CENTERED);
+
+        nk_layout_row_dynamic(nk_ctx, 30, 1);
+        if (nk_button_label(nk_ctx, "Закрыть")) {
+            state->show_user_busy = 0;
+        }
+        nk_end(nk_ctx);
+    }
+
+    return result;
+}
+
 ClientAction user_list_widget(struct nk_context *nk_ctx, ClientState *state, struct nk_list_view *user_list_view) {
     ClientAction result = Action_Idle;
 

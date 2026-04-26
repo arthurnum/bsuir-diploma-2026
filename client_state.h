@@ -16,6 +16,8 @@ typedef struct ClientState {
     char on_call;
     char frame_seq_ready; // wait till next I-frame
 
+    char show_user_busy;
+
     uint16_t connection_idx;
     uint16_t caller_idx;
     uint16_t callee_idx;
