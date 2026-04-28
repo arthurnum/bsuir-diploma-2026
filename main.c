@@ -125,6 +125,16 @@ void sendCallReject(net_sock_addr* addr, uint16_t callerIdx) {
     free(data);
 }
 
+void sendUserNoVideo(net_sock_addr* addr, uint16_t myIdx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    uint8_t* data = calloc(PROTOCOL_USER_NO_VIDEO_SIZE, 1);
+    data[0] = PROTOCOL_USER_NO_VIDEO;
+    put_uint16_i(data, 1, myIdx);
+    send_to_bin(udpClient, addr, data, PROTOCOL_USER_NO_VIDEO_SIZE);
+    free(data);
+}
+
 void sendFramePacket(net_sock_addr* addr, AVPacket* pkt) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
@@ -217,6 +227,11 @@ void handleNetData(ClientState *state) {
         state->show_user_busy = 1;
     }
 
+    if (resData[0] == PROTOCOL_USER_NO_VIDEO) {
+        uint16_t userIdx = get_uint16_i(resData, 1);
+        state->participant_no_video = 1;
+    }
+
     if (resData[0] == PROTOCOL_FRAME) {
         AVPacket* packet = codec->VideoDecodeInPacket;
         av_packet_make_writable(packet);
@@ -240,6 +255,7 @@ void handleNetData(ClientState *state) {
                     memcpy(&pxls[230400], decodedCameraFrame->buf[1]->data, 57600);
                     memcpy(&pxls[288000], decodedCameraFrame->buf[2]->data, 57600);
                     state->next_frame_ready = 1;
+                    state->participant_no_video = 0;
                     // SDL_UpdateTexture(texture2, NULL, pxls, decodedCameraFrame->linesize[0]);
                 }
             }
@@ -320,7 +336,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer("BSUIR Eremeev diploma", 790, 470, 0, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("BSUIR Eremeev diploma", 780, 480, 0, &window, &renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -394,6 +410,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     state->on_call = 0;
     state->frame_seq_ready = 0;
     state->show_user_busy = 0;
+    state->participant_no_video = 1;
     state->users = NULL;
     state = NULL;
 
@@ -546,6 +563,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             SDL_ReleaseCameraFrame(camera, frameAc);
             SDL_DestroySurface(frame);
         }
+    } else if (state->on_call) {
+        sendUserNoVideo(serverAddr, state->connection_idx);
     }
 
     int frameBufSize = codec->AudioEncoderCtx->frame_size * 4; // 4 bytes per sample
@@ -595,7 +614,16 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     // Отрисовка видео-виджетов (задний план)
     if (state->camera_on) {
         picture_widget_render(localCameraWidget, renderer);
-        picture_widget_render(remoteCameraWidget, renderer);
+    } else {
+        no_local_video_widget(nk_ctx, state, localCameraWidget);
+    }
+
+    if (state->on_call) {
+        if (state->participant_no_video) {
+            no_remote_video_widget(nk_ctx, state, remoteCameraWidget);
+        } else {
+            picture_widget_render(remoteCameraWidget, renderer);
+        }
     }
 
     // Nuklear UI (передний план)

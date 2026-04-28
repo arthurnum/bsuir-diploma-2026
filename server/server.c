@@ -40,6 +40,19 @@ void retransmitAudioFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* 
     }
 }
 
+void retransmitUserNoVideo(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    uint16_t sessionId = connMap->entries[idx].session_id;
+    SessionCall* session = &sessionMap->entries[sessionId];
+    for (uint16_t i = 0; i < session->size; i++) {
+        uint16_t connIdx = session->participantsIdx[i];
+        if (connIdx != idx) {
+            send_to_bin(server, connMap->entries[connIdx].addr, data, PROTOCOL_USER_NO_VIDEO_SIZE);
+        }
+    }
+}
+
 void sendUserList(SConnectionMap* connMap, uint8_t idx) {
     // [0] OPT code [8bit]
     // [1] list size [16bit]
@@ -187,6 +200,11 @@ int main() {
             case PROTOCOL_FRAME_AUDIO:
                 idx = get_uint16_i(data, 1);
                 retransmitAudioFramePacket(connMap, idx, data);
+                break;
+
+            case PROTOCOL_USER_NO_VIDEO:
+                idx = get_uint16_i(data, 1);
+                retransmitUserNoVideo(connMap, sessionMap, idx, data);
                 break;
 
             default:

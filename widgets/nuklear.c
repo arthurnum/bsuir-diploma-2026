@@ -119,7 +119,7 @@ ClientAction user_list_widget(struct nk_context *nk_ctx, ClientState *state, str
 
 ClientAction media_control_widget(struct nk_context *nk_ctx, ClientState *state) {
     ClientAction result = Action_Idle;
-    if (nk_begin(nk_ctx, "MediaControlWidget", nk_rect(370, 0, 300, 35),
+    if (nk_begin(nk_ctx, "MediaControlWidget", nk_rect(370, 0, 280, 35),
                  NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
 
         nk_layout_row_dynamic(nk_ctx, 25, 3);
@@ -128,6 +128,32 @@ ClientAction media_control_widget(struct nk_context *nk_ctx, ClientState *state)
 
         // Чекбокс для микрофона
         nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
+        nk_end(nk_ctx);
+    }
+
+    return result;
+}
+
+ClientAction no_local_video_widget(struct nk_context *nk_ctx, ClientState *state, PictureWidget *target) {
+    ClientAction result = Action_Idle;
+    if (nk_begin(nk_ctx, "NoLocalVideoWidget", nk_rect(target->rect->x, target->rect->y, target->rect->w, target->rect->h),
+                 NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+
+        nk_layout_row_dynamic(nk_ctx, target->rect->h, 1);
+        nk_label(nk_ctx, "Нет видео", NK_TEXT_CENTERED);
+        nk_end(nk_ctx);
+    }
+
+    return result;
+}
+
+ClientAction no_remote_video_widget(struct nk_context *nk_ctx, ClientState *state, PictureWidget *target) {
+    ClientAction result = Action_Idle;
+    if (nk_begin(nk_ctx, "NoRemoteVideoWidget", nk_rect(target->rect->x, target->rect->y, target->rect->w, target->rect->h),
+                 NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+
+        nk_layout_row_dynamic(nk_ctx, target->rect->h, 1);
+        nk_label(nk_ctx, "Нет видео", NK_TEXT_CENTERED);
         nk_end(nk_ctx);
     }
 
