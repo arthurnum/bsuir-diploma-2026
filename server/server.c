@@ -8,49 +8,27 @@
 
 static int server;
 
-void retransmitFramePacket(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data) {
-    // [0] OPT code [8bit]
-    // [1] connection idx [16bit]
-    // [3] frame size [32bit]
-    // [7] data size [32bit]
-    // [11] frame EOF flag [8bit]
-    // [12] chunk number [16bit]
-    // [14] frame ID [32bit]
-    // [18] data [512B]
+void retransmitOver(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data, int size) {
     uint16_t sessionId = connMap->entries[idx].session_id;
     SessionCall* session = &sessionMap->entries[sessionId];
     for (uint16_t i = 0; i < session->size; i++) {
         uint16_t connIdx = session->participantsIdx[i];
         if (connIdx != idx) {
-            send_to_bin(server, connMap->entries[connIdx].addr, data, FRAME_PACKET_SIZE);
+            send_to_bin(server, connMap->entries[connIdx].addr, data, size);
         }
     }
 }
 
-void retransmitAudioFramePacket(SConnectionMap* connMap, uint16_t idx, uint8_t* data) {
-    // [0] OPT code [8bit]
-    // [1] connection idx [16bit]
-    // [3] frame size [16bit]
-    // [5] data [<512B]
-    for (int connIndex = 0; connIndex < connMap->size; connIndex++) {
-        if (connIndex != idx) {
-            send_to_bin(server, connMap->entries[connIndex].addr, data, FRAME_AUDIO_PACKET_SIZE);
-            // printf("Send frame to %s",connMap->entries[connIndex].meta_str);
-        }
-    }
+void retransmitFramePacket(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data) {
+    retransmitOver(connMap, sessionMap, idx, data, FRAME_PACKET_SIZE);
+}
+
+void retransmitAudioFramePacket(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data) {
+    retransmitOver(connMap, sessionMap, idx, data, FRAME_AUDIO_PACKET_SIZE);
 }
 
 void retransmitUserNoVideo(SConnectionMap* connMap, SessionMap* sessionMap, uint16_t idx, uint8_t* data) {
-    // [0] OPT code [8bit]
-    // [1] connection idx [16bit]
-    uint16_t sessionId = connMap->entries[idx].session_id;
-    SessionCall* session = &sessionMap->entries[sessionId];
-    for (uint16_t i = 0; i < session->size; i++) {
-        uint16_t connIdx = session->participantsIdx[i];
-        if (connIdx != idx) {
-            send_to_bin(server, connMap->entries[connIdx].addr, data, PROTOCOL_USER_NO_VIDEO_SIZE);
-        }
-    }
+    retransmitOver(connMap, sessionMap, idx, data, PROTOCOL_USER_NO_VIDEO_SIZE);
 }
 
 void sendUserList(SConnectionMap* connMap, uint8_t idx) {
@@ -199,7 +177,7 @@ int main() {
 
             case PROTOCOL_FRAME_AUDIO:
                 idx = get_uint16_i(data, 1);
-                retransmitAudioFramePacket(connMap, idx, data);
+                retransmitAudioFramePacket(connMap, sessionMap, idx, data);
                 break;
 
             case PROTOCOL_USER_NO_VIDEO:

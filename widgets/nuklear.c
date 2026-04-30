@@ -127,7 +127,9 @@ ClientAction media_control_widget(struct nk_context *nk_ctx, ClientState *state)
         nk_checkbox_label(nk_ctx, "Камера", &state->camera_on);
 
         // Чекбокс для микрофона
-        nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on);
+        if (nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on)) {
+            result = Action_MicrophoneToggle;
+        }
         nk_end(nk_ctx);
     }
 

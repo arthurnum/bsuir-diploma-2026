@@ -7,6 +7,7 @@ typedef enum {
     Action_CallCancel,
     Action_IncomingCallAccept,
     Action_IncomingCallReject,
+    Action_MicrophoneToggle
 } ClientAction;
 
 #endif

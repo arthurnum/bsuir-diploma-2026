@@ -642,7 +642,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         nk_end(nk_ctx);
     }
 
-    media_control_widget(nk_ctx, state);
+    switch (media_control_widget(nk_ctx, state)) {
+        case Action_MicrophoneToggle:
+            state->mic_on ? SDL_ResumeAudioStreamDevice(recStream) : SDL_PauseAudioStreamDevice(recStream);
+            break;
+        default:
+            break;
+    }
 
     // Создать Setting UI окно
     if (state->show_settings && nk_begin(nk_ctx, "Настройки", nk_rect(0, 40, 200, 380),
