@@ -25,6 +25,7 @@ target_sources(Client
 find_package(SDL3 REQUIRED)
 
 find_package(PkgConfig REQUIRED)
+set(ENV{PKG_CONFIG_PATH} "$ENV{HOME}/ffmpeg/build/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavdevice
     libavfilter
