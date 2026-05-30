@@ -125,6 +125,16 @@ void sendCallReject(net_sock_addr* addr, uint16_t callerIdx) {
     free(data);
 }
 
+void sendCallFinish(net_sock_addr* addr, uint16_t myIdx) {
+    // [0] OPT code [8bit]
+    // [1] connection idx [16bit]
+    uint8_t* data = calloc(PROTOCOL_CALL_FINISH_SIZE, 1);
+    data[0] = PROTOCOL_CALL_FINISH;
+    put_uint16_i(data, 1, myIdx);
+    send_to_bin(udpClient, addr, data, PROTOCOL_CALL_FINISH_SIZE);
+    free(data);
+}
+
 void sendUserNoVideo(net_sock_addr* addr, uint16_t myIdx) {
     // [0] OPT code [8bit]
     // [1] connection idx [16bit]
@@ -219,6 +229,10 @@ void handleNetData(ClientState *state) {
     if (resData[0] == PROTOCOL_CALL_REJECT) {
         uint16_t callerIdx = get_uint16_i(resData, 1);
         state->waiting_call_response = 0;
+    }
+
+    if (resData[0] == PROTOCOL_CALL_FINISH) {
+        state->on_call = 0;
     }
 
     if (resData[0] == PROTOCOL_USER_BUSY) {
@@ -645,6 +659,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     switch (media_control_widget(nk_ctx, state)) {
         case Action_MicrophoneToggle:
             state->mic_on ? SDL_ResumeAudioStreamDevice(recStream) : SDL_PauseAudioStreamDevice(recStream);
+            break;
+        case Action_CallFinish:
+            sendCallFinish(serverAddr, state->connection_idx);
+            state->on_call = 0;
             break;
         default:
             break;

@@ -5,6 +5,7 @@ typedef enum {
     Action_Idle,
     Action_CallRequest,
     Action_CallCancel,
+    Action_CallFinish,
     Action_IncomingCallAccept,
     Action_IncomingCallReject,
     Action_MicrophoneToggle

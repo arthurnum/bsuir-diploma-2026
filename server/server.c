@@ -170,6 +170,19 @@ int main() {
                 connMap->entries[destIdx].is_on_call = 1;
                 break;
 
+            case PROTOCOL_CALL_FINISH:
+                idx = get_uint16_i(data, 1);
+                retransmitOver(connMap, sessionMap, idx, data, PROTOCOL_CALL_FINISH_SIZE);
+
+                uint16_t sessionId = connMap->entries[idx].session_id;
+                SessionCall* session = &sessionMap->entries[sessionId];
+                for (uint16_t i = 0; i < session->size; i++) {
+                    uint16_t connIdx = session->participantsIdx[i];
+                    connMap->entries[connIdx].is_on_call = 0;
+                }
+                break;
+
+
             case PROTOCOL_FRAME:
                 idx = get_uint16_i(data, 1);
                 retransmitFramePacket(connMap, sessionMap, idx, data);

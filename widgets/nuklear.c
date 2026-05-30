@@ -130,6 +130,10 @@ ClientAction media_control_widget(struct nk_context *nk_ctx, ClientState *state)
         if (nk_checkbox_label(nk_ctx, "Микрофон", &state->mic_on)) {
             result = Action_MicrophoneToggle;
         }
+
+        if (state->on_call && nk_button_label(nk_ctx, "Завершить")) {
+            result = Action_CallFinish;
+        }
         nk_end(nk_ctx);
     }
 
